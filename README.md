@@ -42,12 +42,21 @@ Rigor adapts to the model: LEAN for strong models, STANDARD by default, STRICT f
 
 ## Results
 
-Fill this table from real runs of the benchmark in `benchmark/` (see `benchmark/SCORING.md`). Do not publish numbers you did not measure.
+Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: ambient-labeled two-arm benchmark — both arms keep the full ambient skill catalog; `/one-shot` is added only to the skill arm. 5 specs x 2 repeats per arm, fresh session per run, verbatim prompts, one prompt only. Every number below traces to a sentinel-gated `RESULT.json` under `benchmark/runs` protocol (runs stored in `_runs-zcode`, method in each file). Runs scoring below 10/10 get follow-up prompts actually sent and counted.
 
-- "First-run pass rate" is defined only in `benchmark/SCORING.md`; this table does not restate it.
-- Token counts in skill mode include the skill-instruction overhead, so cross-mode token comparison overstates the skill's cost.
-- Specs 04 (slide deck) and 05 (browser game) run through the core pipeline only — no dedicated module exists in v0.1 — and are scored against the same core criteria.
-- The skill is model-agnostic (plain markdown instructions; rigor levels scale to the model); the measured evidence in this table covers only the two free models listed.
+| Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| glm-5.3-flash (ZCode) | baseline | 10 | 10/10 (100%) | 10.0 | 0 | 1,989,716 |
+| glm-5.3-flash (ZCode) | skill | 10 | 10/10 (100%) | 10.0 | 0 | 2,718,866 |
+
+**The honest headline: on this benchmark, a full tie.** GLM 5.3 Flash with this ambient catalog maxes all 50 criteria in both arms — the benchmark did not separate the arms on pass rate. What the measurement DID show, with evidence:
+
+- **Token economics differ by spec.** Mean tokens per run: baseline 1.99M vs skill 2.72M. Per spec: slide decks **2.7x cheaper with the skill** (0.69M vs 1.84M — its verify loop skipped rework), auth apps **2.6x dearer** (4.45M vs 1.69M — it built TypeScript, helmet, rate limiting and 48-56-test suites where baselines built 26-36-test JavaScript), dashboards 2.1x dearer.
+- **Depth beyond the criteria.** Skill-arm apps consistently shipped more than the spec asked nowhere and more *verification* than baselines: self-authored checkers in every `one-shot-work/`, gate-style known-limitations sections in every report, four self-caught defects fixed mid-build in one game.
+- **A scorer lesson, published as required.** Three checker false-FAILs were caught by measuring twice (.mjs test files, deck chrome in word counts, JS-rendered speaker notes); one apparent skill win dissolved under independent measurement into the tie recorded here. The scoring method and every correction are in the run records.
+- Earlier OpenCode pilot runs (2 models x 5 specs) are retained as exploratory data only — see `PILOT.md` in the runs tree; they are not part of this table.
+
+**Limitations of this measurement:** n=10 per arm, one model, one harness, one weekend. The benchmark's criteria were not hard enough to separate arms on a model that maxes them — distinguishing pass-rate differences needs harder specs or weaker models. Manual criteria were judged from each run's recorded browser-verification evidence with independent spot-checks of the riskiest claims (deck word caps, speaker notes, game persistence); the full method is disclosed in every RESULT.json. Never claim secure or bug-free: all 20 outputs are benchmark artifacts, not audited software.
 - If fewer than all 5 specs are measured at publish time, this table states "measured on N of 5 specs" and missing cells stay empty until measured. Sample size (n) per cell is shown.
 
 | Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
@@ -59,7 +68,8 @@ Fill this table from real runs of the benchmark in `benchmark/` (see `benchmark/
 
 - A skill is instructions, not intelligence. It improves process; it cannot guarantee a result or make a weak model strong.
 - The release gate reduces risk. It does not prove software is secure or bug-free.
-- Version 0.1 has modules for web and app work only. Slides, documents, games and media use the core pipeline with no extra module.
+- Version 0.1 has modules for web and app work only. Slides, documents, games and media use the core pipeline with no extra module — the benchmark's slide-deck and game specs were scored against that same core pipeline on both arms.
+- The skill is model-agnostic (plain markdown; rigor levels scale to the model). The measured table covers one model on one harness; other models and harnesses are unmeasured until run.
 - Stack defaults reflect 2026 sources and go stale; the skill tells the model to verify versions.
 
 ## Repo layout

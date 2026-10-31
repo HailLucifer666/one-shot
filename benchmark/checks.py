@@ -384,7 +384,7 @@ def spec04(root):
                     seg = re.sub(r"\b\d+\s*/\s*\d+\b", " ", seg)
                     seg = re.sub(r"[\u2039\u203a\u2190\u2192]", " ", seg)
                     seg = re.sub(r"speaker notes", " ", seg, flags=re.I)
-                    if re.search(r"class\s*=\s*["'][^"']*(?:notes|drawer|controls|counter)", seg, re.I):
+                    if re.search(r"""class\s*=\s*["'][^"']*(?:notes|drawer|controls|counter)""", seg, re.I):
                         ambiguous = True
                     words = len(visible_text(seg).split())
                     if words > 40:
@@ -395,13 +395,16 @@ def spec04(root):
                     out(3, "FAIL", "; ".join(over))
                 else:
                     out(3, "PASS", f"all {len(markers)} slide segment(s) at 40 words or fewer (chrome and notes excluded)")
-            note_hits = len(re.findall(r"data-notes\s*=|<aside\b", html, re.I))
-            if note_hits >= 8:
-                out(4, "PASS", f"{note_hits} speaker-note marker(s) found")
-            elif note_hits == 0:
-                out(4, "FAIL", "no speaker-note markers found (data-notes attributes or aside elements)")
-            else:
-                out(4, "MANUAL", f"{note_hits} note marker(s) static; confirm notes on all 8 slides")
+        note_hits = len(re.findall(r"data-notes\s*=|<aside\b", html, re.I))
+        if note_hits >= 8:
+            out(4, "PASS", f"{note_hits} speaker-note marker(s) found")
+        elif note_hits == 0:
+            # 2026-10-31: a baseline deck rendered notes via JS-created asides — static absence
+            # is not conclusive; the notes UI must be checked live
+            out(4, "MANUAL", "no static note markers; open the deck, toggle notes (N key or control), "
+                             "verify notes with content on all 8 slides")
+        else:
+            out(4, "MANUAL", f"{note_hits} note marker(s) static; confirm notes on all 8 slides")
             manual_block([
                 (6, "confirm text is 24pt equivalent with 4.5:1 contrast"),
                 (8, "check arrow-key navigation works"),
