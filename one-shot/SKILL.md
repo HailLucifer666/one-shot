@@ -8,7 +8,7 @@ description: Autonomous spec-to-ship builder. Use whenever the user supplies a P
 Goal: deliver a finished, working, verified project on the first pass. Spend effort on planning and checking, not on extra code.
 
 ## 0. Setup
-0. First action, before any other work: create `one-shot-work/` (step 2) and state in one line that one-shot is loaded with the chosen rigor level. Do not load unrelated catalog skills for this build - this skill owns the whole workflow. If the user's message starts with /one-shot, this is the skill to run; do not substitute a different one.
+0. First action, before any other work: create `one-shot-work/` (step 2) and state in one line that one-shot is loaded. Do not load unrelated catalog skills for this build - this skill owns the whole workflow. If the user's message starts with /one-shot, this is the skill to run; do not substitute a different one.
 1. Pick a rigor level and state it in one line.
    - LEAN: strong frontier model. Larger slices, one review at the end of each slice.
    - STANDARD: mid-tier or unknown model (default). Test and review after every slice.
