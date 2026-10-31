@@ -20,7 +20,7 @@ Tick every item before reporting done. Write N/A with a reason when an item does
 - [ ] Security headers and HTTPS set where hosting allows
 - [ ] File uploads (if any) restricted by type and size, stored outside the web root
 
-## AI features (skip if none)
+## AI features (if none, mark this section N/A in one line)
 - [ ] Untrusted text (user input, web pages, files) is treated as data, never as instructions
 - [ ] Model output is validated before use and never executed or rendered unescaped
 - [ ] Tools and permissions given to the model are the minimum needed

@@ -10,7 +10,7 @@ Goal: deliver a finished, working, verified project on the first pass. Spend eff
 ## 0. Setup
 0. First action, before any other work: create `one-shot-work/` (step 2) and state in one line that one-shot is loaded. Do not load unrelated catalog skills for this build - this skill owns the whole workflow. If the user's message starts with /one-shot, this is the skill to run; do not substitute a different one.
 1. Pick a rigor level and state it in one line.
-   - LEAN: strong frontier model. Larger slices, one review at the end of each slice.
+   - LEAN: strong frontier model. Larger slices, one self-review per slice.
    - STANDARD: mid-tier or unknown model (default). Test and review after every slice.
    - STRICT: small, free or local model. Tiny slices (under about 150 changed lines), re-read SPEC.md before every slice, tick every checklist item in writing.
 2. Create `one-shot-work/` using the files in `templates/`: SPEC.md, STACK.md, PLAN.md, PROGRESS.md, ASSUMPTIONS.md. Create BLOCKERS.md only if needed.
@@ -47,7 +47,7 @@ Review as four people, in writing, as short findings:
 - Senior engineer: correct, simple, no dead code.
 - QA: empty, error, loading and edge states.
 - Security: input handling, auth, secrets.
-- Designer (for any UI): hierarchy, spacing, contrast, no template defaults. Measure contrast with computed ratios, do not eyeball - a brand color may need a deepened variant for AA on white or on brand backgrounds.
+- Designer (for any UI): hierarchy, spacing, contrast, no template defaults. Measure contrast with computed ratios, do not eyeball - a brand color may need a deepened variant for AA body-text contrast (4.5:1) on white or on brand backgrounds.
 Fix every finding, then re-run tests.
 
 ## 6. Release gate
@@ -69,6 +69,6 @@ Load only what the output needs.
 - Never claim the result is secure, bug-free or finished beyond what was verified.
 
 ## 9. Final report
-Under 12 lines: what was built, how to run it, what was verified (tests, checks run), known limitations, suggested next steps.
+Under 12 lines: what was built, how to run it, what was verified (tests, checks run), known limitations, suggested next steps. Say that the release gate reduces risk and does not prove the project is secure or bug-free.
 First: list the deliverable files that actually exist on disk. If the deliverable is missing, the run has failed - say so plainly and fix it before reporting anything else. A report describing files that do not exist is a false completion.
 Before reporting: execute the documented run path once yourself (open the page the way the user will, or start the server the way the README says). Node tests passing is not the same as the deliverable working at its documented entry point.
