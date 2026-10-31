@@ -71,3 +71,4 @@ Load only what the output needs.
 ## 9. Final report
 Under 12 lines: what was built, how to run it, what was verified (tests, checks run), known limitations, suggested next steps.
 First: list the deliverable files that actually exist on disk. If the deliverable is missing, the run has failed - say so plainly and fix it before reporting anything else. A report describing files that do not exist is a false completion.
+Before reporting: execute the documented run path once yourself (open the page the way the user will, or start the server the way the README says). Node tests passing is not the same as the deliverable working at its documented entry point.
