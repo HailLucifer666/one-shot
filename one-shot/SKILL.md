@@ -38,7 +38,8 @@ Goal: deliver a finished, working, verified project on the first pass. Spend eff
 3. Write the smallest code that passes. No extra features, files or abstractions.
 4. Run tests, lint, type check and build.
 5. Regression rule: all earlier tests must still pass. If one breaks, fix it before anything else.
-6. Self-review (section 5). Fix. Update PROGRESS.md.
+6. Before marking a slice done, verify on disk that the files it claims exist are really there (list them). A slice whose files are absent is not done - tick nothing.
+7. Self-review (section 5). Fix. Update PROGRESS.md.
 - Retry cap: same failure three times means write it to BLOCKERS.md, try one genuinely different approach, then ask the user.
 
 ## 5. Self-review (after each slice and at the end)
@@ -50,7 +51,7 @@ Review as four people, in writing, as short findings:
 Fix every finding, then re-run tests.
 
 ## 6. Release gate
-Before saying done, load `gate.md` and tick every item. Fix failures or list them under Known limitations. Mark non-applicable items N/A with a reason.
+Before saying done, load `gate.md` and tick every item. Fix failures or list them under Known limitations. Mark non-applicable items N/A with a reason. Record the result in `one-shot-work/GATE.md` - every item ticked, failed, or N/A. A run without a recorded gate is not done.
 
 ## 7. Modules
 Load only what the output needs.
@@ -69,3 +70,4 @@ Load only what the output needs.
 
 ## 9. Final report
 Under 12 lines: what was built, how to run it, what was verified (tests, checks run), known limitations, suggested next steps.
+First: list the deliverable files that actually exist on disk. If the deliverable is missing, the run has failed - say so plainly and fix it before reporting anything else. A report describing files that do not exist is a false completion.
