@@ -1,4 +1,5 @@
 benchmark/runs/
 .DS_Store
+.env
 __pycache__/
 one-shot-work/

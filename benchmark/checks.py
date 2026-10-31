@@ -200,8 +200,8 @@ def spec02(root):
         out(2, "MANUAL", "no known hash/auth library referenced in source; inspect the DB directly, "
                          "e.g. sqlite3 <dbfile> \"select password from users limit 3\" - expect $2b$/$argon2/scrypt prefixes")
 
-    # 8: tests exist
-    tests = [p for p in iter_files(root, {".py", ".js", ".ts", ".jsx", ".tsx"})
+    # 8: tests exist (.mjs/.cjs included — 2026-10-31: tests/api.test.mjs was missed without them)
+    tests = [p for p in iter_files(root, {".py", ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx"})
              if re.search(r"(?:^|/)test_|_test\.|\.test\.|\.spec\.|(?:^|/)tests?/",
                           "/".join(p.parts).lower())]
     if tests:
@@ -375,15 +375,26 @@ def spec04(root):
             if markers:
                 bounds = markers + [len(html)]
                 over = []
+                ambiguous = False
                 for i, (a, b) in enumerate(zip(bounds, bounds[1:]), 1):
                     seg = re.sub(r"<aside\b.*?</aside>", " ", html[a:b], flags=re.I | re.S)
+                    seg = re.sub(r"<style\b.*?</style>", " ", seg, flags=re.I | re.S)
+                    seg = re.sub(r"<script\b.*?</script>", " ", seg, flags=re.I | re.S)
+                    # strip deck chrome that follows the last slide: counters, nav glyphs, drawer labels
+                    seg = re.sub(r"\b\d+\s*/\s*\d+\b", " ", seg)
+                    seg = re.sub(r"[\u2039\u203a\u2190\u2192]", " ", seg)
+                    seg = re.sub(r"speaker notes", " ", seg, flags=re.I)
+                    if re.search(r"class\s*=\s*["'][^"']*(?:notes|drawer|controls|counter)", seg, re.I):
+                        ambiguous = True
                     words = len(visible_text(seg).split())
                     if words > 40:
                         over.append(f"slide{i}: {words} words")
-                if over:
+                if ambiguous and not over:
+                    out(3, "MANUAL", "deck chrome follows the last slide; static count ambiguous — judge slide word counts by eye")
+                elif over:
                     out(3, "FAIL", "; ".join(over))
                 else:
-                    out(3, "PASS", f"all {len(markers)} slide segment(s) at 40 words or fewer (notes asides excluded)")
+                    out(3, "PASS", f"all {len(markers)} slide segment(s) at 40 words or fewer (chrome and notes excluded)")
             note_hits = len(re.findall(r"data-notes\s*=|<aside\b", html, re.I))
             if note_hits >= 8:
                 out(4, "PASS", f"{note_hits} speaker-note marker(s) found")
