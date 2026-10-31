@@ -42,7 +42,7 @@ Rigor adapts to the model: LEAN for strong models, STANDARD by default, STRICT f
 
 ## Results
 
-Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: ambient-labeled two-arm benchmark — both arms keep the full ambient skill catalog; `/one-shot` is added only to the skill arm. 5 specs x 2 repeats per arm, fresh session per run, verbatim prompts, one prompt only. Every number below traces to a sentinel-gated `RESULT.json` under `benchmark/runs` protocol (runs stored in `_runs-zcode`, method in each file). Runs scoring below 10/10 get follow-up prompts actually sent and counted.
+Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: ambient-labeled two-arm benchmark — both arms keep the full ambient skill catalog; `/one-shot` is added only to the skill arm. 5 specs x 2 repeats per arm, fresh session per run, verbatim prompts, one prompt only. Every number below traces to a sentinel-gated `RESULT.json` under `benchmark/runs` protocol (runs stored in `_runs-zcode`, method in each file). Runs scoring below 10/10 get follow-up prompts actually sent and counted. The skill arm ran version 0.1 (sha256 prefix `d17a33667c28c421`); the 0.1.1, 0.1.2 and 0.1.3 fixes each came from external tests after this measurement and are unmeasured on this benchmark.
 
 | Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -57,12 +57,6 @@ Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: amb
 - Earlier OpenCode pilot runs (2 models x 5 specs) are retained as exploratory data only — see `PILOT.md` in the runs tree; they are not part of this table.
 
 **Limitations of this measurement:** n=10 per arm, one model, one harness, one weekend. The benchmark's criteria were not hard enough to separate arms on a model that maxes them — distinguishing pass-rate differences needs harder specs or weaker models. Manual criteria were judged from each run's recorded browser-verification evidence with independent spot-checks of the riskiest claims (deck word caps, speaker notes, game persistence); the full method is disclosed in every RESULT.json. Never claim secure or bug-free: all 20 outputs are benchmark artifacts, not audited software.
-- If fewer than all 5 specs are measured at publish time, this table states "measured on N of 5 specs" and missing cells stay empty until measured. Sample size (n) per cell is shown.
-
-| Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
-| --- | --- | --- | --- | --- | --- | --- |
-| | baseline | | | | | |
-| | skill | | | | | |
 
 ## Limitations
 
