@@ -51,7 +51,7 @@ Review as four people, in writing, as short findings:
 Fix every finding, then re-run tests.
 
 ## 6. Release gate
-Before saying done, load `gate.md` and tick every item. Fix failures or list them under Known limitations. Mark non-applicable items N/A with a reason. Record the result in `one-shot-work/GATE.md` - every item ticked, failed, or N/A. A run without a recorded gate is not done.
+Before saying done, load `gate.md` and tick every item. Fix failures or list them under Known limitations. Mark non-applicable items N/A with a reason. Record the result as a GATE.md file inside one-shot-work/ - every item ticked, failed, or N/A. A run without a recorded gate is not done.
 
 ## 7. Modules
 Load only what the output needs.
