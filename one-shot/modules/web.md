@@ -1,6 +1,6 @@
 # Web module: websites and landing pages
 
-Load for any site, landing page, marketing page or UI-heavy output. Design decisions come before code.
+Load for any site, landing page or marketing page. Design decisions come before code.
 
 ## Process
 1. Write the page goal in one sentence and the one action a visitor should take.
