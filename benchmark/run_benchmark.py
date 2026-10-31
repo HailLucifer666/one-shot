@@ -24,9 +24,10 @@ def init(model, mode, repeats):
     print(f"Created run folders under {RUNS / model / mode}")
 
 
-def summary():
+def summary(runs_dir=None):
+    root = Path(runs_dir) if runs_dir else RUNS
     rows = {}
-    for res in RUNS.glob("*/*/*/*/RESULT.json"):
+    for res in root.glob("*/*/*/*/RESULT.json"):
         model, mode = res.parts[-5], res.parts[-4]
         data = json.loads(res.read_text())
         if data["criteria_passed"] is None:
@@ -55,6 +56,10 @@ if __name__ == "__main__":
     a.add_argument("--model", required=True)
     a.add_argument("--mode", choices=["baseline", "skill"], required=True)
     a.add_argument("--repeats", type=int, default=2)
-    sub.add_parser("summary")
+    s = sub.add_parser("summary")
+    s.add_argument("--runs-dir", default=None, help="alternate run tree (default benchmark/runs)")
     args = p.parse_args()
-    init(args.model, args.mode, args.repeats) if args.cmd == "init" else summary()
+    if args.cmd == "init":
+        init(args.model, args.mode, args.repeats)
+    else:
+        summary(args.runs_dir)
