@@ -1,0 +1,33 @@
+{
+  "run": "glm-5.3-flash/baseline/H1-vague-coffee-shop/run1",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "harness": "zcode (fresh subagent, session model)",
+  "skill_version": null,
+  "criteria_passed": 8,
+  "criteria_total": 19,
+  "first_run_percent": 42.1,
+  "breakdown": {
+    "auto_15": 6,
+    "manual": {
+      "16_contrast_primary_button": "PASS (btn-primary #a4572e bg / #fff8ee text = 5.00:1, tools/check_h1.py contrast)",
+      "17_no_sideways_scroll_360": "PASS (scrollWidth == clientWidth == 345 at 360px viewport, all four pages measured)",
+      "18_sections_exactly_as_asked": "FAIL (built testimonials + invented extra menu items + 4-page site; owner sheet says no testimonials, five sections)",
+      "19_file://_opens_no_console_errors": "PASS* - deviation per pre-registered decision 6: file: not navigable in harness; verified over served http (all pages), mobile-menu toggle executes (main.js runs), node --check clean; console history unreadable in harness (isolated world)"
+    }
+  },
+  "auto_check_detail": {
+    "failed": [1, 2, 3, 4, 5, 6, 8, 9, 14],
+    "passed": [7, 10, 11, 12, 13, 15],
+    "note": "invented brand 'The Copper Cup', invented menu (only some prices coincide), invented address 214 Lantern Lane Asheville, invented hours/mailto; 4 h1s because the site is 4 pages"
+  },
+  "fix_rounds": 0,
+  "regressions": 0,
+  "tokens_used": 1736246,
+  "duration_s": 819,
+  "interview_coverage": {"asked": 0, "of": 12, "outcome": "asked-nothing"},
+  "one_shot_fingerprint": false,
+  "contamination": "none (no one-shot-work/ anywhere in run dir)",
+  "notes": "Agent built a polished 4-page site without asking anything; every owner-sheet fact was invented. Criterion 18 fails visibly; multi-page build also trips criterion 14 (known checker edge, recorded)."
+}

@@ -1,0 +1,25 @@
+{
+  "run": "glm-5.3-flash/baseline/H5-brownfield/run1",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "harness": "zcode (fresh subagent, session model)",
+  "skill_version": null,
+  "criteria_passed": 7,
+  "criteria_total": 7,
+  "first_run_percent": 100.0,
+  "breakdown": {
+    "runner_C1_to_C7": "all PASS (tools/run_h5.mjs after the C7 fix; exit 0)",
+    "c5_manual_half": "PASS - verified in served page: dropdown renders, due shown on rows, overdue highlight measured working (li class ' overdue' + '(overdue)' label on a task due 2000-01-01; clock-safe date, same technique as the hidden tests)"
+  },
+  "fix_rounds": 0,
+  "regressions": 0,
+  "tokens_used": 778588,
+  "duration_s": 237,
+  "one_shot_fingerprint": false,
+  "contamination": "none (no one-shot-work/ anywhere in run dir)",
+  "implementation_notes": "26 new tests (39 total, originals untouched, sha-guard held); due validation = strict regex + Date.UTC round-trip; overdue via UTC string compare identical to the server definition; PATCH validation before lookup so a rejected patch mutates nothing.",
+  "scorer_lesson": "First manual C5 check was a FALSE FAIL by the scorer: the probe task was due 2026-10-31, and the harness browser clock at 04:50 IST makes the UTC date 2026-10-31 - due ON today is not overdue. Measured the premise, re-probed clock-safe, highlight confirmed working. Recorded as the pack's first scorer-lesson (same class as the three v0.1 checker false-FAILs).",
+  "validity_flag": "H5 IS TOO EASY for this model: 7/7 baseline. Pre-registered rule => strengthen the spec and re-run Step 0 for H5 alone before any arm comparison. Also recorded: run_h5's C5 auto part passes on string presence ('overdue' in HTML) regardless of behavior - a proxy; the manual half is load-bearing.",
+  "notes": "The agent even looked for the acceptance tool (not visible from its sandbox) and self-verified with its own 39-test suite + live HTTP checks; official runner confirms."
+}
