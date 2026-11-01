@@ -4,7 +4,7 @@
   python tools/check_h1.py <output-dir>
   python tools/check_h1.py contrast <hex1> <hex2>
 """
-import re, sys
+import re, sys, urllib.parse
 from pathlib import Path
 
 def norm(s):
@@ -73,6 +73,12 @@ def main():
             return True
         for part in ref.split(","):
             u = part.strip().split()[0].split("#")[0].split("?")[0] if part.strip() else ""
+            try:
+                u = urllib.parse.unquote(u)
+            except Exception:
+                pass
+            if u.startswith("#"):
+                continue
             if u and not re.fullmatch(r"[a-z0-9._/~+-]+\.(?:svg|png|jpe?g|gif|webp|ico|avif)", u, re.I):
                 return False
         return True

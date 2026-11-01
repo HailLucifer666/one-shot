@@ -59,14 +59,59 @@ if (!ready) { server.kill(); console.error("Candidate server did not start. Chec
 const hidden = spawnSync("node", ["--test", "--test-reporter=tap", path.join(root, "specs/H5-brownfield/hidden/h5.hidden.test.mjs")], {
   encoding: "utf8", env: { ...process.env, H5_BASE: `http://localhost:${port}` },
 });
+// C8: persistence — tasks survive a restart; id numbering continues; the store is a JSON
+// array on disk. (Strengthened 2026-11-01 after Step 0: the v1 spec one-shot at 7/7.)
+// The before-restart list and marker POST happen while the first server is still up.
+let before = [];
+try {
+  before = await (await fetch(`http://localhost:${port}/api/tasks`)).json();
+} catch {
+  before = [];
+}
+const maxBefore = Array.isArray(before) ? before.reduce((m, t) => Math.max(m, t.id), 0) : 0;
+const marker = `h5-persist-${Math.random().toString(36).slice(2, 8)}`;
+try {
+  const made = await (await fetch(`http://localhost:${port}/api/tasks`, { method: "POST", body: JSON.stringify({ title: marker, due: "2030-01-01" }) })).json();
+  mark("C8", !!made && made.id > maxBefore, "marker task created before restart");
+} catch (e) {
+  mark("C8", false, `marker POST failed: ${e.message}`);
+}
 server.kill();
+await new Promise((r) => setTimeout(r, 300));
+const server2 = spawn("node", ["server.js"], { cwd: cand, env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
+let ready2 = false;
+for (let i = 0; i < 50 && !ready2; i++) {
+  try { ready2 = (await fetch(`http://localhost:${port}/api/tasks`)).ok; } catch { await new Promise((r) => setTimeout(r, 100)); }
+}
+if (!ready2) {
+  mark("C8", false, "server did not start again (persistence boot)");
+} else {
+  try {
+    const after = await (await fetch(`http://localhost:${port}/api/tasks`)).json();
+    const found = Array.isArray(after) && after.find((t) => t.title === marker);
+    mark("C8", !!found, found ? "" : "marker task missing after restart");
+    const made2 = await (await fetch(`http://localhost:${port}/api/tasks`, { method: "POST", body: JSON.stringify({ title: marker + "-2" }) })).json();
+    mark("C8", !!made2 && made2.id > maxBefore, `id continues after restart (new id ${made2 ? made2.id : "?"}, previous max ${maxBefore})`);
+  } catch (e) {
+    mark("C8", false, `restart read failed: ${e.message}`);
+  }
+}
+const dataFile = path.join(cand, "data", "tasks.json");
+try {
+  const parsed = JSON.parse(fs.readFileSync(dataFile, "utf8"));
+  mark("C8", Array.isArray(parsed), "data/tasks.json is a JSON array");
+} catch (e) {
+  mark("C8", false, `data/tasks.json unreadable or not an array: ${e.message}`);
+}
+server2.kill();
+
 for (const line of (hidden.stdout || "").split("\n")) {
   const m = line.match(/^(not )?ok \d+ - (C\d): (.+?)(?: #.*)?$/);
   if (m) mark(m[2], !m[1], m[3]);
 }
 
 let allOk = true;
-for (const c of ["C1", "C2", "C3", "C4", "C5", "C6", "C7"]) {
+for (const c of ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]) {
   const rs = results[c] || [];
   const ok = rs.length > 0 && rs.every((r) => r.ok);
   allOk &&= ok;

@@ -11,7 +11,9 @@ alltext = "\n".join(code.values()).lower()
 doctext = "\n".join(docs.values()).lower()
 web = "\n".join(code.values())
 
-ext = re.findall(r"(?:src|href)=[\"'](https?://[^\"']+)", web, re.I) + re.findall(r"@import\s+url\(\s*[\"']?(https?://[^)\"']+)", web, re.I)
+ext = (re.findall(r"(?:src|href)=[\"'](https?://[^\"']+)", web, re.I)
+       + re.findall(r"@import\s+url\(\s*[\"']?(https?://[^)\"']+)", web, re.I)
+       + re.findall(r"url\(\s*[\"']?((?:https?:)?//[^)\"']+)", web, re.I))
 print(f" 9. {'PASS' if not ext else 'FAIL'} external URLs: {ext[:3] if ext else 'none'}")
 claims = [m for m in re.findall(r"[^.\n]*(?:guarantee|never (?:be )?lost|cannot be lost|will not lose)[^.\n]*", alltext + "\n" + doctext)]
 neg = [c for c in claims if re.search(r"\b(cannot|can't|not|no|impossible|unable|without)\b", c)]

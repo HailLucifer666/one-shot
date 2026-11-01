@@ -11,7 +11,7 @@ Run the app: `npm start` (port from the PORT environment variable, default 3000)
 - PATCH with `"due": null` clears it.
 - Every task in every response includes `due` (`null` when unset).
 
-**C2. Status filter.** `GET /api/tasks?status=open` returns only tasks with done=false, `status=done` only done=true. Any other status value returns 400. With no `status`, behavior is unchanged (all tasks).
+**C2. Status filter.** `GET /api/tasks?status=open` returns only tasks with done=false, `status=done` only done=true. Any other status value returns 400. With no `status`, behavior is unchanged (all tasks). Any query parameter other than `status` and `overdue` returns 400.
 
 **C3. Overdue filter.** `GET /api/tasks?overdue=true` returns only tasks that are not done and whose `due` is before today (UTC date). It can be combined with `status`. Any `overdue` value other than `true` returns 400.
 
@@ -25,5 +25,7 @@ Run the app: `npm start` (port from the PORT environment variable, default 3000)
 
 **C7. Tests.** Add tests for the new behavior in NEW files under `test/`. `npm test` must pass.
 
+**C8. Persistence.** Tasks survive a restart. The app keeps its tasks in `data/tasks.json` (a JSON array of the same task objects the API returns), written on every mutation and loaded when the server starts. A missing file means an empty store. A corrupt file is a start-up error with a clear message, never silent data loss. New tasks created after a restart continue id numbering past the stored tasks (a restart must never hand out an id that already exists).
+
 ## Acceptance
-Run: `node tools/run_h5.mjs <path-to-candidate-folder>` from the pack root. It reports C1 to C7 as PASS or FAIL. C5 is partly manual: open the page and look.
+Run: `node tools/run_h5.mjs <path-to-candidate-folder>` from the pack root. It reports C1 to C8 as PASS or FAIL. C5 is partly manual: open the page and look.
