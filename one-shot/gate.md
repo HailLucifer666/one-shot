@@ -1,6 +1,6 @@
 # Release gate
 
-Tick every item before reporting done. Write N/A with a reason when an item does not apply. Fix failures or list them under Known limitations in the final report. This gate reduces risk; it does not prove the project is secure or bug-free, and the final report must say so.
+Tick every item before reporting done. Write N/A with a reason when an item does not apply. Fix failures or list them under Known limitations in the final report. Correctness and Security items are must-have; AI features are must-have when they apply; Quality and Delivery items are nice-to-have unless SPEC.md marks them as acceptance criteria. A must-have item unmet means the gate is BLOCKED (see SKILL.md section 6), not done-with-limitations. This gate reduces risk; it does not prove the project is secure or bug-free, and the final report must say so.
 
 ## Correctness
 - [ ] Every acceptance criterion in SPEC.md is met or listed as a known limitation
