@@ -1,0 +1,29 @@
+{
+  "run": "glm-5.3-flash/tier1/baseline/H1-vague-coffee-shop/run2",
+  "dir": "tier1/baseline/H1-vague-coffee-shop/run2",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "skill_version": null,
+  "first_run": {
+    "criteria_passed": 9,
+    "criteria_total": 19,
+    "percent": 47.4,
+    "auto_15": 7,
+    "manual": {"16_contrast": "PASS (copper #9C4A21 on paper #F6EFE3 = 5.38:1, computed on the live button)", "17_no_sideways_scroll_360": "PASS 345<=345", "18_sections_exact": "FAIL contact form + extra highlight strip", "19_run_path": "PASS* served-http fallback"}
+  },
+  "fix_rounds_to_100": 2,
+  "fix_round_log": [
+    {"round": 1, "sent": "failing criteria 1-6,8,9,18 verbatim", "category": "missing (7 of 9 fixed from the criteria text; agent's batched question got no answer through the escalation channel)"},
+    {"round": 2, "sent": "owner-sheet answers: address, phone, about text, hours", "category": "missing (facts not inferable)"}
+  ],
+  "final_state": "15/15 auto + manual PASS",
+  "regressions": 0,
+  "tokens_first_run": 444370,
+  "tokens_total_incl_fix_rounds": 2344118,
+  "duration_s_first_run": 595,
+  "interview_coverage": {"asked": 0, "of": 12, "outcome": "asked-nothing (first run)"},
+  "one_shot_fingerprint": false,
+  "contamination": "none",
+  "notes": "One interrupted resume (provider 'Start Plan busy', retried once). Final agent note honestly flagged two invented stat figures in the About row as placeholders."
+}

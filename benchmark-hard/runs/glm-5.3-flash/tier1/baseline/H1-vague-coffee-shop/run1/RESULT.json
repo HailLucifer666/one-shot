@@ -1,0 +1,29 @@
+{
+  "run": "glm-5.3-flash/tier1/baseline/H1-vague-coffee-shop/run1",
+  "dir": "tier1/baseline/H1-vague-coffee-shop/run1",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "skill_version": null,
+  "first_run": {
+    "criteria_passed": 8,
+    "criteria_total": 19,
+    "percent": 42.1,
+    "auto_15": 6,
+    "manual": {"16_contrast": "PASS 15.01:1", "17_no_sideways_scroll_360": "PASS 345<=345", "18_sections_exact": "FAIL contact form + extra sections + testimonials", "19_run_path": "PASS* served-http fallback (file: not navigable in harness); JS behavioral verified"}
+  },
+  "fix_rounds_to_100": 2,
+  "fix_round_log": [
+    {"round": 1, "sent": "failing criteria 1-9,18 verbatim", "category": "missing (invented content; criteria carried their own expected strings, agent fixed 8 of 10)"},
+    {"round": 2, "sent": "owner-sheet answers: address, phone, about text", "category": "missing (facts not inferable from criteria text)"}
+  ],
+  "final_state": "15/15 auto + all manual PASS (contrast 12.59:1 on the rebuilt palette, 360px clean, exactly 5 sections, run-path behavioral)",
+  "regressions": 0,
+  "tokens_first_run": 1447397,
+  "tokens_total_incl_fix_rounds": 5565997,
+  "duration_s_first_run": 690,
+  "interview_coverage": {"asked": 0, "of": 12, "outcome": "asked-nothing (first run); fix-round questions answered from owner sheet per protocol"},
+  "one_shot_fingerprint": false,
+  "contamination": "none",
+  "notes": "Second consecutive 'The Copper Cup' invention with a different address; checker false-positive on check 12 (%23n fragment) found by this run and fixed in tools (decode before local-path test)."
+}

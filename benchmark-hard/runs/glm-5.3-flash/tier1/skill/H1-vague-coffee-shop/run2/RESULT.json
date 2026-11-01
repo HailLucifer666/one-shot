@@ -1,0 +1,29 @@
+{
+  "run": "glm-5.3-flash/tier1/skill/H1-vague-coffee-shop/run2",
+  "dir": "tier1/skill/H1-vague-coffee-shop/run2",
+  "date": "2026-11-01",
+  "arm": "skill",
+  "model": "glm-5.3-flash",
+  "skill_version": "v0.1.4 (SKILL.md sha256 prefix e183a8cd00db0302)",
+  "first_run": {
+    "criteria_passed": 10,
+    "criteria_total": 19,
+    "percent": 52.6,
+    "auto_15": 6,
+    "auto_note": "check 10 first flagged 'lorem ipsum' - a false FAIL: the build's own smoke test asserts doesNotMatch(/lorem ipsum/i). Checker fixed to scan rendered text + CSS instead of raw file text (probe recorded); score is 6/15 with the fix, 5/15 without.",
+    "manual": {"16_contrast": "PASS (skip-link/CTA dark-on-cream, computed)", "17_no_sideways_scroll_360": "PASS 345<=345", "18_sections_exact": "PASS hero/about/menu/visit/footer, contact = tel:/mailto: links, no form, no testimonials/gallery (grep 0)", "19_run_path": "PASS* served-http + behavioral"}
+  },
+  "fix_rounds_to_100": 1,
+  "fix_round_log": [
+    {"round": 1, "sent": "failing criteria 1-9 verbatim", "category": "missing; agent asked batched questions THROUGH the escalation channel this time, owner-sheet answers supplied (address, phone, about, six menu items, hours format); regression test shipped (smoke 11->13), gate re-run PASS"}
+  ],
+  "final_state": "15/15 auto + manual PASS; zero overflow at 360/1280 with mobile menu open; zero console errors",
+  "regressions": 0,
+  "tokens_first_run": 3175777,
+  "tokens_total_incl_fix_rounds": 5821772,
+  "duration_s_first_run": 1145,
+  "interview_coverage": {"asked": 6, "of": 12, "outcome": "asked via escalation (batched), answered from owner sheet - the only arm whose questions reached the tester"},
+  "one_shot_fingerprint": true,
+  "contamination": "none",
+  "notes": "Sample content fully replaced in round 1; the six asked topics were name, menu, address, phone, hours, about."
+}

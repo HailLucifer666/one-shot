@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cutwell Salon - Book an appointment</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="brand-row">
+      <div class="brand">Cutwell <span>Salon</span></div>
+      <div class="clock-note" id="clock-note" hidden>Test clock: <code id="clock-value"></code></div>
+    </div>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="#/book" data-nav="book" hidden>Book</a>
+      <a href="#/bookings" data-nav="bookings" hidden>My bookings</a>
+      <a href="#/schedule" data-nav="schedule" hidden>My schedule</a>
+      <a href="#/admin" data-nav="admin" hidden>Admin</a>
+      <a href="#/audit" data-nav="audit" hidden>Audit log</a>
+      <span class="nav-user" id="nav-user" hidden></span>
+      <button type="button" class="btn btn-ghost" id="btn-logout" hidden>Sign out</button>
+    </nav>
+  </header>
+
+  <main id="main" class="site-main">
+
+    <!-- ============ Auth ============ -->
+    <section id="view-auth" class="view" hidden aria-labelledby="auth-heading">
+      <h1 id="auth-heading">Welcome to Cutwell</h1>
+      <p class="muted">Sign in to book an appointment, or create an account in seconds.</p>
+      <div class="auth-grid">
+        <div class="card">
+          <h2>Sign in</h2>
+          <div id="login-error" class="alert alert-error" role="alert" hidden></div>
+          <form id="form-login" novalidate>
+            <div class="field">
+              <label for="login-email">Email</label>
+              <input type="email" id="login-email" name="email" autocomplete="email" required>
+            </div>
+            <div class="field">
+              <label for="login-password">Password</label>
+              <input type="password" id="login-password" name="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="login-submit">Sign in</button>
+          </form>
+          <p class="muted small" id="login-hint"></p>
+        </div>
+        <div class="card">
+          <h2>Create account</h2>
+          <div id="register-error" class="alert alert-error" role="alert" hidden></div>
+          <form id="form-register" novalidate>
+            <div class="field">
+              <label for="reg-name">Name</label>
+              <input type="text" id="reg-name" name="name" autocomplete="name" required>
+            </div>
+            <div class="field">
+              <label for="reg-email">Email</label>
+              <input type="email" id="reg-email" name="email" autocomplete="email" required>
+            </div>
+            <div class="field">
+              <label for="reg-password">Password <span class="muted small">(at least 10 characters)</span></label>
+              <input type="password" id="reg-password" name="password" autocomplete="new-password" minlength="10" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="register-submit">Create account</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Book ============ -->
+    <section id="view-book" class="view" hidden aria-labelledby="book-heading">
+      <h1 id="book-heading">Book an appointment</h1>
+      <div id="book-error" class="alert alert-error" role="alert" hidden></div>
+
+      <div class="card">
+        <h2>1. Choose a service</h2>
+        <div id="service-list" class="radio-list" role="radiogroup" aria-label="Service">
+          <p class="state state-loading">Loading services...</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2. Choose a stylist</h2>
+        <div class="field">
+          <label for="stylist-select">Stylist</label>
+          <select id="stylist-select">
+            <option value="any">Any available stylist</option>
+          </select>
+        </div>
+        <p class="muted small" id="stylist-schedules"></p>
+      </div>
+
+      <div class="card">
+        <h2>3. Pick a date and time</h2>
+        <div class="field-row">
+          <div class="field">
+            <label for="book-date">Date</label>
+            <input type="date" id="book-date">
+          </div>
+          <div class="field">
+            <button type="button" class="btn btn-primary" id="btn-find-slots">Find available times</button>
+          </div>
+        </div>
+        <div id="slots-region" class="slots-region" role="region" aria-live="polite" aria-label="Available times">
+          <p class="muted">Choose a date, then press "Find available times".</p>
+        </div>
+      </div>
+
+      <div class="card" id="confirm-card" hidden>
+        <h2>4. Confirm your booking</h2>
+        <p id="confirm-summary"></p>
+        <button type="button" class="btn btn-primary" id="btn-confirm-book">Book this appointment</button>
+      </div>
+
+      <div class="card card-success" id="booked-panel" hidden>
+        <h2>Booked!</h2>
+        <p id="booked-detail"></p>
+        <p class="muted small">A confirmation email has been saved to the salon outbox.</p>
+        <a class="btn btn-ghost" href="#/bookings">View my bookings</a>
+      </div>
+    </section>
+
+    <!-- ============ My bookings ============ -->
+    <section id="view-bookings" class="view" hidden aria-labelledby="bookings-heading">
+      <h1 id="bookings-heading">My bookings</h1>
+      <div id="bookings-error" class="alert alert-error" role="alert" hidden></div>
+      <div id="bookings-list" role="region" aria-live="polite"></div>
+
+      <div class="card" id="reschedule-card" hidden aria-labelledby="reschedule-heading">
+        <h2 id="reschedule-heading">Reschedule <span id="reschedule-ref" class="mono"></span></h2>
+        <p class="muted small">The booking reference stays the same. You can only reschedule up to 24 hours before the current start time.</p>
+        <div class="field-row">
+          <div class="field">
+            <label for="reschedule-date">New date</label>
+            <input type="date" id="reschedule-date">
+          </div>
+          <div class="field">
+            <button type="button" class="btn btn-primary" id="btn-find-reschedule">Find times</button>
+            <button type="button" class="btn btn-ghost" id="btn-cancel-reschedule">Close</button>
+          </div>
+        </div>
+        <div id="reschedule-slots" class="slots-region" role="region" aria-live="polite" aria-label="New times"></div>
+      </div>
+    </section>
+
+    <!-- ============ Stylist schedule ============ -->
+    <section id="view-schedule" class="view" hidden aria-labelledby="schedule-heading">
+      <h1 id="schedule-heading">My schedule</h1>
+      <p class="muted">Your appointments, read only. Ask the salon desk to make changes.</p>
+      <div id="schedule-error" class="alert alert-error" role="alert" hidden></div>
+      <div id="schedule-list" role="region" aria-live="polite"></div>
+    </section>
+
+    <!-- ============ Admin ============ -->
+    <section id="view-admin" class="view" hidden aria-labelledby="admin-heading">
+      <h1 id="admin-heading">All bookings</h1>
+      <div id="admin-error" class="alert alert-error" role="alert" hidden></div>
+
+      <div class="card">
+        <h2 class="h-small">Filters (combine freely)</h2>
+        <form id="admin-filters" class="filter-row">
+          <div class="field">
+            <label for="filter-date">Date</label>
+            <input type="date" id="filter-date">
+          </div>
+          <div class="field">
+            <label for="filter-stylist">Stylist</label>
+            <select id="filter-stylist">
+              <option value="">All stylists</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="filter-status">Status</label>
+            <select id="filter-status">
+              <option value="">All statuses</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="field field-actions">
+            <button type="submit" class="btn btn-primary">Apply filters</button>
+            <button type="button" class="btn btn-ghost" id="btn-filter-clear">Clear</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <span id="admin-count" class="muted"></span>
+          <a class="btn btn-ghost" id="btn-export-csv" href="/api/admin/bookings/csv" download>Export next 7 days (CSV)</a>
+        </div>
+        <div id="admin-table" role="region" aria-live="polite"></div>
+        <div class="pager" id="admin-pager"></div>
+      </div>
+    </section>
+
+    <!-- ============ Audit log ============ -->
+    <section id="view-audit" class="view" hidden aria-labelledby="audit-heading">
+      <h1 id="audit-heading">Audit log</h1>
+      <p class="muted">Every create, cancel and reschedule: who, what, when, before and after.</p>
+      <div id="audit-error" class="alert alert-error" role="alert" hidden></div>
+      <div id="audit-list" role="region" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p class="muted small">Cutwell Salon - open Monday to Saturday, 9:00 AM to 6:00 PM (<span id="footer-tz">America/Chicago</span>).</p>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

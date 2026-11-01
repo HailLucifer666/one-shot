@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<!--
+  Ember & Oak — single-page static website.
+  Content follows the owner sheet: name, brand colors, fonts, menu, prices,
+  hours, address, phone, email and about copy. Short item descriptions are
+  the builder's. See one-shot-work/ASSUMPTIONS.md.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ember & Oak — Small-batch coffee, poured all day</title>
+  <meta name="description" content="Ember & Oak is Riverton's neighborhood coffeehouse: espresso, cold brew and pastries baked before sunrise at 14 Lantern Lane. Open 7 am to 6 pm on weekdays, 8 am to 4 pm on weekends.">
+  <meta property="og:title" content="Ember & Oak">
+  <meta property="og:description" content="Neighborhood coffeehouse at 14 Lantern Lane, Riverton. Open 7 am to 6 pm on weekdays, 8 am to 4 pm on weekends.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231E1612'/%3E%3Cpath d='M8 13h12v6a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z' fill='%23FAF5EE'/%3E%3Cpath d='M20 14h2.2a2.8 2.8 0 1 1 0 5.6H20' fill='none' stroke='%23FAF5EE' stroke-width='2'/%3E%3Ccircle cx='13' cy='8' r='2.4' fill='%23D9822B'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+<body id="top">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <nav class="site-nav" aria-label="Main">
+      <a class="brand" href="#top">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect width="32" height="32" rx="7" fill="currentColor"/>
+          <path d="M8 13h12v6a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z" fill="var(--paper)"/>
+          <path d="M20 14h2.2a2.8 2.8 0 1 1 0 5.6H20" fill="none" stroke="var(--paper)" stroke-width="2"/>
+          <circle cx="13" cy="8" r="2.4" fill="var(--accent)"/>
+        </svg>
+        <span class="brand-name">Ember & Oak</span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+        <span class="nav-toggle-text">Menu</span>
+        <svg class="nav-toggle-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+          <path class="icon-open" d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path class="icon-close" d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <ul class="nav-links" id="nav-links">
+        <li><a href="#menu">Menu</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="#hours">Hours & location</a></li>
+        <li><a href="#contact">Contact</a></li>
+        <li><a class="nav-cta" href="mailto:hello@emberandoak.example">Email us</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="home" aria-labelledby="hero-title">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">Neighborhood coffeehouse &middot; Riverton &middot; open daily</p>
+          <h1 id="hero-title">Slow mornings, serious coffee.</h1>
+          <p class="hero-lede">We pull espresso, brew slow filter and bake pastries before sunrise &mdash; a small room on Lantern Lane built for the long, golden part of the day.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#menu">See the menu</a>
+            <a class="btn btn-ghost" href="#hours">Opening hours</a>
+          </div>
+          <ul class="hero-facts" aria-label="What we offer">
+            <li>Coffee roasted in small batches</li>
+            <li>Pastries baked before sunrise</li>
+            <li>Beans by the bag to take home</li>
+          </ul>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <svg viewBox="0 0 320 320" focusable="false">
+            <circle cx="160" cy="150" r="118" fill="var(--accent-soft)"/>
+            <circle cx="160" cy="150" r="118" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 10" stroke-linecap="round"/>
+            <path d="M96 168h104v22a52 52 0 0 1-52 52h0a52 52 0 0 1-52-52z" fill="var(--espresso)"/>
+            <path d="M200 174h14a22 22 0 1 1 0 44h-10" fill="none" stroke="var(--espresso)" stroke-width="8"/>
+            <rect x="84" y="252" width="128" height="10" rx="5" fill="var(--espresso)"/>
+            <path d="M132 96c0-12 12-12 12-24M160 104c0-12 12-12 12-24" fill="none" stroke="var(--accent-ink)" stroke-width="6" stroke-linecap="round"/>
+            <path d="M52 262c26 14 62 22 108 22s82-8 108-22" fill="none" stroke="var(--accent-ink)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 12"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="menu" id="menu" aria-labelledby="menu-title">
+      <div class="section-head">
+        <h2 id="menu-title">The menu</h2>
+        <p>A short list, done properly: espresso drinks from the machine, cold brew from the fridge, and the oven case in between.</p>
+      </div>
+      <div class="menu-filter" role="group" aria-label="Filter menu by category">
+        <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="filter-btn" data-filter="drinks" aria-pressed="false">Drinks</button>
+        <button type="button" class="filter-btn" data-filter="bakery" aria-pressed="false">Bakery</button>
+      </div>
+      <ul class="menu-list">
+        <li class="menu-item" data-category="drinks">
+          <h3>Espresso</h3>
+          <p>A double shot of the house blend: cocoa, dried cherry, a clean finish.</p>
+          <span class="price">$3.00</span>
+        </li>
+        <li class="menu-item" data-category="drinks">
+          <h3>Flat White</h3>
+          <p>Two shots under silky whole milk, poured short and warm, not hot.</p>
+          <span class="price">$4.25</span>
+        </li>
+        <li class="menu-item" data-category="drinks">
+          <h3>Oat Milk Latte</h3>
+          <p>Espresso over chilled oat milk, lightly sweet with brown sugar.</p>
+          <span class="price">$5.00</span>
+        </li>
+        <li class="menu-item" data-category="drinks">
+          <h3>Cold Brew</h3>
+          <p>Steeped eighteen hours, served over ice with orange peel if you like.</p>
+          <span class="price">$4.75</span>
+        </li>
+        <li class="menu-item" data-category="bakery">
+          <h3>Almond Croissant</h3>
+          <p>Twice-baked with almond cream and toasted flaked almonds.</p>
+          <span class="price">$3.75</span>
+        </li>
+        <li class="menu-item" data-category="bakery">
+          <h3>Cardamom Bun</h3>
+          <p>Twisted, buttery, heavy on the cardamom sugar.</p>
+          <span class="price">$3.50</span>
+        </li>
+      </ul>
+      <p class="menu-empty" hidden>No items in this category &mdash; pick another tab.</p>
+    </section>
+
+    <section class="about" id="about" aria-labelledby="about-title">
+      <div class="section-head">
+        <h2 id="about-title">About</h2>
+      </div>
+      <div class="about-grid">
+        <p class="about-lead">Ember & Oak opened in 2019 in a former hardware store. We roast in small batches every Tuesday. Everything in the case is baked before sunrise.</p>
+      </div>
+    </section>
+
+    <section class="visit" id="hours" aria-labelledby="hours-title">
+      <div class="section-head">
+        <h2 id="hours-title">Hours & location</h2>
+        <p>The corner room at 14 Lantern Lane, Riverton &mdash; look for the copper kettle sign.</p>
+      </div>
+      <div class="visit-grid">
+        <div class="visit-block">
+          <h3>Hours</h3>
+          <dl class="hours">
+            <dt>Monday to Friday</dt>
+            <dd>7 am to 6 pm</dd>
+            <dt>Saturday and Sunday</dt>
+            <dd>8 am to 4 pm</dd>
+          </dl>
+        </div>
+        <div class="visit-block">
+          <h3>Find us</h3>
+          <address class="address">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <span>14 Lantern Lane<br>Riverton</span>
+          </address>
+          <p class="visit-links">
+            <a class="btn btn-ghost" href="https://www.google.com/maps/search/?api=1&amp;query=14+Lantern+Lane+Riverton" rel="noopener">Get directions</a>
+          </p>
+        </div>
+        <div class="visit-block">
+          <h3>Call us</h3>
+          <ul class="contact-list">
+            <li>
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+              <a href="tel:+15550142">555-0142</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="contact" id="contact" aria-labelledby="contact-title">
+      <div class="section-head">
+        <h2 id="contact-title">Contact</h2>
+        <p>Catering, beans by the bag, or a table for twelve &mdash; email us and we'll answer within a day.</p>
+      </div>
+      <div class="contact-inner">
+        <a class="btn btn-primary btn-large" href="mailto:hello@emberandoak.example">hello@emberandoak.example</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <p class="footer-brand">Ember & Oak</p>
+      <ul class="footer-nav">
+        <li><a href="#menu">Menu</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="#hours">Hours & location</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+      <p class="footer-note">&copy; 2026 Ember & Oak &middot; 14 Lantern Lane, Riverton &middot; 555-0142</p>
+    </div>
+  </footer>
+</body>
+</html>

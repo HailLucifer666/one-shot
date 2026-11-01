@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taskbox</title>
+  <style>
+    html { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 2rem auto; padding: 0 1rem; }
+    li { display: flex; gap: .5rem; align-items: center; padding: .25rem 0; flex-wrap: wrap; }
+    li.done span.title { text-decoration: line-through; color: #666; }
+    .due { color: #555; font-size: .85rem; }
+    li.overdue .due { color: #b00020; font-weight: 700; }
+    .overdue-badge { background: #b00020; color: #fff; font-size: .7rem; padding: .1rem .45rem; border-radius: .6rem; }
+    form, .toolbar { display: flex; gap: .5rem; align-items: center; margin: .5rem 0; }
+    .legend { color: #666; font-size: .85rem; margin: .25rem 0 .75rem; }
+  </style>
+</head>
+<body>
+  <h1>Taskbox</h1>
+  <form id="add">
+    <input id="title" placeholder="New task" required>
+    <input id="due" type="date" aria-label="Due date">
+    <button>Add</button>
+  </form>
+  <div class="toolbar">
+    <label for="filter">Show</label>
+    <select id="filter">
+      <option value="">all</option>
+      <option value="open">open</option>
+      <option value="done">done</option>
+    </select>
+  </div>
+  <p class="legend">Open tasks past their due date are marked overdue.</p>
+  <ul id="list"></ul>
+  <script>
+    function todayUTC() { return new Date().toISOString().slice(0, 10); }
+
+    async function load() {
+      const filter = document.getElementById("filter").value;
+      const qs = filter ? "?status=" + encodeURIComponent(filter) : "";
+      const res = await fetch("/api/tasks" + qs);
+      if (!res.ok) return;
+      const tasks = await res.json();
+      const today = todayUTC();
+      const ul = document.getElementById("list");
+      ul.innerHTML = "";
+      for (const t of tasks) {
+        const li = document.createElement("li");
+        const isOverdue = !t.done && t.due !== null && t.due < today;
+        if (t.done) li.classList.add("done");
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.checked = t.done;
+        cb.onchange = async () => { await fetch("/api/tasks/" + t.id, { method: "PATCH", body: JSON.stringify({ done: cb.checked }) }); load(); };
+        const span = document.createElement("span"); span.className = "title"; span.textContent = t.title;
+        const del = document.createElement("button"); del.textContent = "Delete";
+        del.onclick = async () => { await fetch("/api/tasks/" + t.id, { method: "DELETE" }); load(); };
+        li.append(cb, span);
+        if (t.due) {
+          const due = document.createElement("span");
+          due.className = "due";
+          due.textContent = "due " + t.due;
+          li.append(due);
+        }
+        if (isOverdue) {
+          li.classList.add("overdue");
+          const badge = document.createElement("span");
+          badge.className = "overdue-badge";
+          badge.textContent = "overdue";
+          li.append(badge);
+        }
+        li.append(del);
+        ul.append(li);
+      }
+    }
+    document.getElementById("add").onsubmit = async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("title");
+      const due = document.getElementById("due").value;
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: input.value, due: due || null })
+      });
+      input.value = "";
+      document.getElementById("due").value = "";
+      load();
+    };
+    document.getElementById("filter").onchange = load;
+    load();
+  </script>
+</body>
+</html>

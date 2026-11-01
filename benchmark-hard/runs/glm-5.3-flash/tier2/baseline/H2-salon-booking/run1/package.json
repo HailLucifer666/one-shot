@@ -1,0 +1,21 @@
+{
+  "name": "cutwell-booking",
+  "version": "1.0.0",
+  "private": true,
+  "description": "H2: Salon booking system (Cutwell) - full-stack booking app for one salon",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "seed": "node scripts/seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.2.0",
+    "express": "^4.21.2",
+    "luxon": "^3.7.1"
+  }
+}

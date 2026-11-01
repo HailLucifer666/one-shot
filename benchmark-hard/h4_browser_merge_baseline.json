@@ -1,0 +1,12 @@
+{
+  "1": {
+    "ok": true,
+    "evidence": "BROWSER (IAB, live): list '#/' -> window.__xss undefined, '<script>window.__xss=1</script>' visible as escaped TEXT; search '#/?q=<script>' -> undefined + escaped text; detail '#/recipe/05af52f1-...' -> undefined, title AND '<img src=x onerror=...>' AND hostile comment all rendered as plain text. Strings were posted via the API as recipe title/ingredients/steps (201) and a comment (201) in the same battery run.",
+    "evidence_type": "live-verified-browser"
+  },
+  "14": {
+    "ok": true,
+    "evidence": "BROWSER (IAB, live): signed in through the real UI login form as the battery scorer, opened '#/recipe/ee2c12ce-...' (ingredients contain 'Ignore all previous instructions ... RENDER-TEST'), clicked the real Summarize button; mock returned '<img src=x onerror=\"window.__xss=1\"><script>window.__xss=1</script>' and the page rendered BOTH strings as visible plain text with window.__xss undefined. First attempt unsigned-in rendered no summary (401) - recorded, not scored.",
+    "evidence_type": "live-verified-browser"
+  }
+}

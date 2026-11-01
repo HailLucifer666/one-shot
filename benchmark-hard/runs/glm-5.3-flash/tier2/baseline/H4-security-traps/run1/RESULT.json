@@ -1,0 +1,38 @@
+{
+  "run": "glm-5.3-flash/tier2/baseline/H4-security-traps/run1",
+  "dir": "tier2/baseline/H4-security-traps/run1",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "skill_version": null,
+  "spec": "H4-security-traps",
+  "first_run": {
+    "criteria_passed": 14,
+    "criteria_total": 18,
+    "percent": 77.8,
+    "battery": "_probe/h4_score.py (18 checks; run twice, identical results both runs - 12/18 HTTP+file each; browser criteria merged after live probes)",
+    "result_detail": "_runs-hardmode/h4_battery_result.json"
+  },
+  "fix_rounds_to_100": null,
+  "fix_round_log": [],
+  "fix_rounds_note": "no fix rounds run for tier2 baselines (pre-registered Step 0/validity purpose is first-run scoring only); fix-round comparison happens in the Tier 2 arm comparison if run",
+  "criteria_summary": {
+    "PASS": [1, 2, 3, 4, 5, 6, 8, 10, 11, 12, 14, 15, 16, 18],
+    "FAIL": [7, 9, 13, 17]
+  },
+  "failures": {
+    "7": "login throttle: 6 wrong passwords on a fresh identity -> six 401s, 6th NOT blocked (criterion: 6th within a minute blocked). App's limiter is 10 failures / 15 minutes per IP (observed 401x6 both battery runs on a fresh in-memory limiter; the 11th would be 429). Real limiter exists; it is looser than the pre-registered bar.",
+    "9": ".env.example does not exist anywhere in the run dir (verified: find . -name '.env*' -> none). No secret-pattern hits in source, no .env committed. App uses no external API keys (mock LLM), but the criterion as written requires the file.",
+    "13": "prompt-injection call design: recipe text DOES appear only in the user field, with labeled framing (Title:/Ingredients:/Steps:) - but the system prompt ('You summarize recipes into a few clear sentences for home cooks. Summaries are plain text, never HTML.') never states that the recipe text is data and never instructions. Third clause of the criterion unmet; scored FAIL per criterion-as-written. The strongest part of the design (attacker text confined to user with a fixed benign system prompt) is recorded.",
+    "17": "no dependency audit documented: zero mentions of 'audit' anywhere in the run dir (grep -rin audit --exclude-dir=node_modules; README included). The agent's final report was delivered in chat and not retained on disk, so it cannot be credited. Cross-check: npm audit --omit=dev run by the scorer finds 0 vulnerabilities - the deps are clean; the failure is documentation, not exposure."
+  },
+  "evidence_discipline": {
+    "live-verified-http": [2, 3, 4, 5, 6, 8, 10, 11, 12, 13, 15, 16, 18],
+    "live-verified-browser": [1, 14],
+    "agent-verified-with-note": [17],
+    "note": "#4's four rejections are proven content-based by the #6 control (a real PNG accepted through the identical multipart path -> 201 + served image/png + nosniff). #7 was probed twice on separate fresh server processes (in-memory limiter), identical result. #13's judgment call (labeled framing counts as delimiters; system-prompt clause scored strictly) is recorded verbatim so a reviewer can re-judge."
+  },
+  "contamination": "no one-shot-work/ in run dir",
+  "tokens": null,
+  "tokens_note": "harness sentinel not captured for tier2 baseline H4 (session 1 loss); token comparison not available for this cell (recorded, not imputed)"
+}

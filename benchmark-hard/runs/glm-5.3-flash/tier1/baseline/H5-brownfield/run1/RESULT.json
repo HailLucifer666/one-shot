@@ -1,0 +1,24 @@
+{
+  "run": "glm-5.3-flash/tier1/baseline/H5-brownfield/run1",
+  "dir": "tier1/baseline/H5-brownfield/run2 (agent inherited the session cwd; recorded here)",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "skill_version": null,
+  "first_run": {
+    "criteria_passed": 8,
+    "criteria_total": 8,
+    "percent": 100.0,
+    "runner": "C1-C8 all PASS exit 0",
+    "c5_manual": "PASS - overdue marker on open past-due rows only; runner's own C8 persistence marker visible in the live list"
+  },
+  "fix_rounds_to_100": 0,
+  "fix_round_log": [],
+  "regressions": 0,
+  "tokens_first_run": 2876870,
+  "tokens_total_incl_fix_rounds": 2876870,
+  "duration_s_first_run": 748,
+  "one_shot_fingerprint": false,
+  "contamination": "none",
+  "notes": "57/57 tests (44 new); atomic write (temp+rename); agent unprompted reported the repo-pack CRLF defect (led to the .gitattributes fix)."
+}

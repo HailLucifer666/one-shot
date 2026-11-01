@@ -58,6 +58,10 @@ Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: amb
 
 **Limitations of this measurement:** n=10 per arm, one model, one harness, one weekend. The benchmark's criteria were not hard enough to separate arms on a model that maxes them — distinguishing pass-rate differences needs harder specs or weaker models. Manual criteria were judged from each run's recorded browser-verification evidence with independent spot-checks of the riskiest claims (deck word caps, speaker notes, game persistence); the full method is disclosed in every RESULT.json. Never claim secure or bug-free: all 20 outputs are benchmark artifacts, not audited software.
 
+## Hard-mode follow-up (GLM 5.3 Flash, 2026-11-01)
+
+A harder five-spec pack (vague brief, conflicting requirements, security traps, brownfield change, salon booking) ran as a second benchmark. Honest result, per the pack's own pre-registered rules: **only 2 of 5 specs discriminate pass-rate on this model** (H1 44.7% and H4 77.8% baselines; H2/H3/H5 are ceilings) — below the "3 of 5" bar the pack set for launching a validated benchmark, so the fallback applies: publish what was learned. On the two specs that do measure, **the skill won both**: H1 on median fix rounds (1 vs 2, zero regressions, ~1.6× tokens) and H4 security-traps on first-run pass rate (17/18 vs 14/18, +16.6 points, n=1) — with the skill arm's cheapest build (3.8M tokens) scoring its best result. Every cell is labeled n=1 per arm (the pre-registered n=2 was not reached within budget; run2 is explicitly queued, not silently dropped). Full tables, per-criterion evidence types, battery provenance and the defects-found list: [`benchmark-hard/RESULTS.md`](benchmark-hard/RESULTS.md).
+
 ## Limitations
 
 - A skill is instructions, not intelligence. It improves process; it cannot guarantee a result or make a weak model strong.

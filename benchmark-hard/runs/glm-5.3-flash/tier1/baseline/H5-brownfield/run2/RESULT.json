@@ -1,0 +1,24 @@
+{
+  "run": "glm-5.3-flash/tier1/baseline/H5-brownfield/run2",
+  "dir": "tier1/baseline/H5-brownfield/run3",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "skill_version": null,
+  "first_run": {
+    "criteria_passed": 8,
+    "criteria_total": 8,
+    "percent": 100.0,
+    "runner": "C1-C8 all PASS exit 0",
+    "c5_manual": "PASS - (overdue) labels on open past-due rows only, done tasks excluded"
+  },
+  "fix_rounds_to_100": 0,
+  "fix_round_log": [],
+  "regressions": 0,
+  "tokens_first_run": 1565841,
+  "tokens_total_incl_fix_rounds": 1565841,
+  "duration_s_first_run": 1074,
+  "one_shot_fingerprint": false,
+  "contamination": "none",
+  "notes": "43/43 tests; design decision recorded: resource-not-found takes precedence over invalid-body on PATCH (404), locked in its own tests."
+}

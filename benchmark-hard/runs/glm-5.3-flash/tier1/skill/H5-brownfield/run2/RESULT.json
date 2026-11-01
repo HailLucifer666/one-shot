@@ -1,0 +1,24 @@
+{
+  "run": "glm-5.3-flash/tier1/skill/H5-brownfield/run2",
+  "dir": "tier1/skill/H5-brownfield/run2",
+  "date": "2026-11-01",
+  "arm": "skill",
+  "model": "glm-5.3-flash",
+  "skill_version": "v0.1.4 (SKILL.md sha256 prefix e183a8cd00db0302)",
+  "first_run": {
+    "criteria_passed": 8,
+    "criteria_total": 8,
+    "percent": 100.0,
+    "runner": "C1-C8 all PASS exit 0",
+    "c5_manual": "PASS - overdue visible, dropdown present (verified live)"
+  },
+  "fix_rounds_to_100": 0,
+  "fix_round_log": [],
+  "regressions": 0,
+  "tokens_first_run": 1388861,
+  "tokens_total_incl_fix_rounds": 1388861,
+  "duration_s_first_run": 654,
+  "one_shot_fingerprint": true,
+  "contamination": "none",
+  "skill_behavior_notes": "One early failure self-caught in-slice (server did not call store.load() yet -> persistence test found no file) and fixed in the same slice. 42/42 tests. TASKBOX_DATA_FILE override so tests never touch real data. GATE.md PASS. Its own known-limitations list names the C5 half it could not do (human eyeball) - honest."
+}

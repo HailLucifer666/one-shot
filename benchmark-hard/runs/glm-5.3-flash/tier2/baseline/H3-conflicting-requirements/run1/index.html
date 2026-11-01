@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TeamBoard — offline task board</title>
+<style>
+:root{--bg:#0e1320;--p:#161d30;--c:#1d2742;--l:#2a3555;--t:#e9eef8;--d:#93a2c4;--acc:#5b8def;--red:#e5604c}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--t);font:14px/1.4 system-ui,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:var(--p);border-bottom:1px solid var(--l)}
+h1{font-size:16px;white-space:nowrap;margin-right:4px}
+input,select,button{font:inherit;color:inherit;background:var(--c);border:1px solid var(--l);border-radius:6px;padding:5px 9px}
+input:focus,select:focus{outline:none;border-color:var(--acc)}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+.primary,.on{background:var(--acc);border-color:var(--acc);color:#fff}
+#q{flex:1;min-width:150px}
+.stats{color:var(--d);font-size:12px;white-space:nowrap}
+#hint{color:var(--d);font-size:12px;padding:6px 14px 0}
+#board{flex:1;display:flex;gap:10px;padding:10px;overflow:hidden}
+.col{flex:1;display:flex;flex-direction:column;background:var(--p);border:1px solid var(--l);border-radius:10px;min-width:230px;overflow:hidden}
+.col.hide{display:none}
+.chead{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--l);font-weight:600}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.cnt{color:var(--d);font-weight:400;font-size:12px}
+.cbody{flex:1;overflow-y:auto;position:relative}
+.spacer{position:relative}
+.win{position:absolute;left:0;right:0;top:0}
+.row{position:absolute;left:6px;right:6px;height:48px;background:var(--c);border:1px solid var(--l);border-radius:8px;padding:6px 10px;cursor:pointer;overflow:hidden}
+.row:hover{border-color:var(--acc)}
+.ttl{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.rm{display:flex;justify-content:space-between;gap:6px;color:var(--d);font-size:12px;margin-top:2px;align-items:center}
+.rm button{padding:0 7px;font-size:12px;background:none;border:none;color:var(--d)}
+.rm button:hover{color:var(--red)}
+.overdue{color:var(--red);font-weight:600}
+.empty{position:absolute;top:14px;left:0;right:0;text-align:center;color:var(--d)}
+#ganttView{flex:1;display:none;overflow:auto;padding:10px}
+#gwrap{background:var(--p);border:1px solid var(--l);border-radius:10px;padding:10px}
+#gcanvas{display:block}
+#gtip{position:fixed;background:#000d;color:#fff;padding:6px 9px;border-radius:6px;font-size:12px;pointer-events:none;display:none;z-index:9;white-space:pre-line;max-width:320px}
+dialog{background:var(--p);color:var(--t);border:1px solid var(--l);border-radius:12px;padding:18px;min-width:320px}
+dialog::backdrop{background:#000a}
+dialog label{display:block;margin:10px 0 0;color:var(--d);font-size:12px}
+dialog input,dialog select{width:100%;margin-top:3px;padding:7px 9px;background:var(--bg)}
+.btns{display:flex;gap:8px;margin-top:16px;align-items:center}
+.btns .sp{flex:1}
+.danger{background:none;border-color:var(--red);color:var(--red)}
+#toasts{position:fixed;bottom:14px;right:14px;display:flex;flex-direction:column;gap:8px;z-index:9}
+.toast{background:var(--c);border:1px solid var(--l);border-left:3px solid var(--acc);padding:9px 12px;border-radius:8px;display:flex;gap:10px;align-items:center;box-shadow:0 4px 14px #0007;max-width:340px}
+.toast.err{border-left-color:var(--red)}
+.toast button{padding:2px 8px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+<h1>TeamBoard</h1>
+<button id="btnB" class="on">Board</button>
+<button id="btnG">Gantt</button>
+<input id="q" placeholder="Search title or assignee…" aria-label="Search tasks">
+<select id="fFilter" aria-label="Filter by status"><option value="all">All statuses</option><option value="todo">Todo</option><option value="doing">Doing</option><option value="done">Done</option></select>
+<button id="btnNew" class="primary">+ New task</button>
+<button id="btnDemo">Load 100k demo</button>
+<button id="btnExp">Export backup</button>
+<button id="btnImp">Import</button>
+<input id="impFile" type="file" accept=".json,application/json" hidden>
+<span class="stats" id="stats"></span>
+</header>
+<div id="hint">100% offline — no server, no network, no external files. Open this page in a second tab: edits sync between tabs in under a second. “Export backup” writes a file you keep, so data survives even cleared browser storage.</div>
+<div id="board">
+<section class="col" data-st="todo"><div class="chead"><span><i class="dot" style="background:#5b8def"></i>Todo</span><span class="cnt">0</span></div><div class="cbody"><div class="spacer"><div class="empty">No tasks</div><div class="win"></div></div></div></section>
+<section class="col" data-st="doing"><div class="chead"><span><i class="dot" style="background:#eab04d"></i>Doing</span><span class="cnt">0</span></div><div class="cbody"><div class="spacer"><div class="empty">No tasks</div><div class="win"></div></div></div></section>
+<section class="col" data-st="done"><div class="chead"><span><i class="dot" style="background:#3fc98c"></i>Done</span><span class="cnt">0</span></div><div class="cbody"><div class="spacer"><div class="empty">No tasks</div><div class="win"></div></div></div></section>
+</div>
+<div id="ganttView"><div id="gwrap"><canvas id="gcanvas"></canvas></div></div>
+<div id="gtip"></div>
+<dialog id="dlg">
+<form id="frm">
+<h3 id="dlgH">New task</h3>
+<label>Title<input id="fTitle" required maxlength="200" autocomplete="off"></label>
+<label>Status<select id="fStatus"><option value="todo">Todo</option><option value="doing">Doing</option><option value="done">Done</option></select></label>
+<label>Due date<input id="fDue" type="date" required></label>
+<label>Assignee<input id="fAssignee" required maxlength="80" autocomplete="off" list="assignees"></label>
+<datalist id="assignees"></datalist>
+<div class="btns"><button type="button" id="fDel" class="danger" style="display:none">Delete</button><span class="sp"></span><button type="button" id="fCancel">Cancel</button><button type="submit" class="primary">Save</button></div>
+</form>
+</dialog>
+<div id="toasts"></div>
+<script>
+'use strict';
+/* TeamBoard — single-file, dependency-free task board.
+   Storage: IndexedDB (primary, scales to 100k+) mirrored to a localStorage snapshot
+   (small datasets), so data survives either store being cleared. Cross-tab sync:
+   BroadcastChannel, then storage events, then a 500 ms revision poll. Gantt: hand-rolled
+   canvas renderer (no libraries ship in the file). Search: linear scan over a
+   precomputed lowercase index — instant at 100k. Board: windowed (virtual) rendering. */
+const $=id=>document.getElementById(id);
+const STATUSES=['todo','doing','done'];
+const COL={todo:'#5b8def',doing:'#eab04d',done:'#3fc98c'};
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ROWH=54,GCAP=300;
+const p2=n=>String(n).padStart(2,'0');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
+const todayISO=()=>{const d=new Date();return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());};
+const TODAY=todayISO();
+
+let tasks=[],byId=new Map(),view={todo:[],doing:[],done:[]};
+let rev=0,bigMode=false,query='',filter='all',mode='board',editing=null;
+let db=null,writeQ=new Map(),flushT=0,snapT=0,bc=null;
+const sender=Math.random().toString(36).slice(2,10);
+const seen=new Set();
+
+const colEls={};
+for(const sec of document.querySelectorAll('.col')){const st=sec.dataset.st;
+ colEls[st]={body:sec.querySelector('.cbody'),spacer:sec.querySelector('.spacer'),win:sec.querySelector('.win'),cnt:sec.querySelector('.cnt'),empty:sec.querySelector('.empty')};}
+
+/* ---------- data ---------- */
+function hydrate(t){if(!t)return t;if(!t.id)t.id='t'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+ t.title=String(t.title||'');t.assignee=String(t.assignee||'');t.due=String(t.due||'');
+ t.status=STATUSES.indexOf(t.status)>=0?t.status:'todo';t.updatedAt=t.updatedAt||0;
+ t._s=(t.title+'\n'+t.assignee).toLowerCase();byId.set(t.id,t);return t;}
+const strip=t=>({id:t.id,title:t.title,status:t.status,due:t.due,assignee:t.assignee,updatedAt:t.updatedAt});
+function sortMaster(){tasks.sort((a,b)=>(a.due||'9999-12-31')<(b.due||'9999-12-31')?-1:(a.due||'9999-12-31')>(b.due||'9999-12-31')?1:(a.id<b.id?-1:1));}
+function upsert(t,pub){if(pub===undefined)pub=true;t.updatedAt=Date.now();if(!t.id)t.id='t'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+ const ex=byId.get(t.id);hydrate(t);
+ if(ex){const i=tasks.indexOf(ex);if(i>=0)tasks[i]=t;}else tasks.push(t);
+ sortMaster();writeQ.set(t.id,{op:'put',t});scheduleFlush();if(pub)publishOp({a:'put',t:strip(t)});}
+function removeTask(id,pub){if(pub===undefined)pub=true;const ex=byId.get(id);if(!ex)return;
+ const i=tasks.indexOf(ex);if(i>=0)tasks.splice(i,1);byId.delete(id);
+ writeQ.set(id,{op:'del',id});scheduleFlush();if(pub)publishOp({a:'del',id});}
+function rebuild(){const q=query.trim().toLowerCase();const v={todo:[],doing:[],done:[]};
+ if(q)for(let i=0;i<tasks.length;i++){const t=tasks[i];if(t._s.indexOf(q)>=0)v[t.status].push(t);}
+ else for(let i=0;i<tasks.length;i++){const t=tasks[i];v[t.status].push(t);}
+ view=v;let n=filter==='all'?v.todo.length+v.doing.length+v.done.length:v[filter].length;
+ $('stats').textContent=tasks.length.toLocaleString()+' tasks · '+n.toLocaleString()+' shown'+(q?' for “'+q+'”':'');}
+function rebuildAll(){rebuild();renderCols();if(mode==='gantt')drawGantt();buildDatalist();}
+
+/* ---------- persistence ---------- */
+function idbOpen(){return new Promise((res,rej)=>{const r=indexedDB.open('teamboard',1);
+ r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('tasks'))d.createObjectStore('tasks',{keyPath:'id'});if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta');};
+ r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked by another tab'));});}
+function idbGetAll(){return new Promise((res,rej)=>{const rq=db.transaction('tasks').objectStore('tasks').getAll();rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>rej(rq.error);});}
+function idbGetRev(){return new Promise(res=>{try{const rq=db.transaction('meta').objectStore('meta').get('rev');rq.onsuccess=()=>res(+rq.result||0);rq.onerror=()=>res(0);}catch(_){res(0);}});}
+function scheduleFlush(){if(!flushT)flushT=setTimeout(flush,120);}
+async function flush(){flushT=0;if(!db||!writeQ.size)return;const ops=[];writeQ.forEach(o=>ops.push(o));writeQ.clear();
+ try{await new Promise((res,rej)=>{const tx=db.transaction(['tasks','meta'],'readwrite');const st=tx.objectStore('tasks');
+  for(const o of ops){if(o.op==='put')st.put(strip(o.t));else st.delete(o.id);}
+  tx.objectStore('meta').put(rev,'rev');tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);});}
+ catch(e){toast('Local save failed: '+e.message,1);}}
+async function idbReplaceAll(arr){if(!db)return;const CH=5000;
+ for(let i=0;i<arr.length;i+=CH){const last=i+CH>=arr.length;
+  try{await new Promise((res,rej)=>{const tx=db.transaction(['tasks','meta'],'readwrite');const st=tx.objectStore('tasks');
+   if(i===0)st.clear();for(let j=i;j<Math.min(arr.length,i+CH);j++)st.put(strip(arr[j]));
+   if(last)tx.objectStore('meta').put(rev,'rev');tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);});}
+  catch(e){toast('IndexedDB write failed: '+e.message,1);return;}}}
+function persistRev(){try{localStorage.setItem('tb.rev',String(rev));}catch(_){}}
+function snapshotSoon(){if(bigMode||tasks.length>20000)return;if(snapT)return;snapT=setTimeout(saveSnapshot,300);}
+function saveSnapshot(){snapT=0;try{localStorage.setItem('tb.data',JSON.stringify({rev,tasks:tasks.map(strip)}));}
+ catch(_){bigMode=true;try{localStorage.removeItem('tb.data');}catch(_){}}}
+function publishOp(extra){rev++;const op={r:rev,s:sender};for(const k in extra)op[k]=extra[k];
+ try{localStorage.setItem('tb.journal',JSON.stringify(op));}catch(_){}persistRev();
+ if(bc){try{bc.postMessage(op);}catch(_){}}
+ snapshotSoon();}
+function publishAll(){rev++;const op={r:rev,s:sender,a:'all',n:tasks.length};
+ if(tasks.length>20000)op.big=1;else op.t=tasks.map(strip);
+ try{localStorage.setItem('tb.journal',JSON.stringify(op));}catch(_){}persistRev();
+ if(bc){try{bc.postMessage(op);}catch(_){}}}
+async function loadState(){let snap=null,snapRev=0;
+ try{const raw=localStorage.getItem('tb.data');if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks)){snap=d;snapRev=+d.rev||0;}}}catch(_){}
+ let idbArr=[],idbRev=0;
+ if(db){try{idbArr=await idbGetAll();idbRev=await idbGetRev();}catch(_){}}
+ const lsRev=+localStorage.getItem('tb.rev')||0;
+ if(idbArr.length&&idbRev>=snapRev)tasks=idbArr.map(hydrate);
+ else if(snap&&snap.tasks.length)tasks=snap.tasks.map(hydrate);
+ rev=Math.max(rev,lsRev,snapRev,idbRev);
+ sortMaster();bigMode=tasks.length>20000;
+ if(!bigMode&&tasks.length&&!snap){saveSnapshot();persistRev();}
+ if(db&&!idbArr.length&&tasks.length)idbReplaceAll(tasks);}
+
+/* ---------- cross-tab sync ---------- */
+function applyOp(op){if(!op||!op.a)return;const k=(op.r||0)+':'+(op.s||'');if(seen.has(k))return;seen.add(k);if(seen.size>800)seen.clear();
+ if(op.r)rev=Math.max(rev,op.r);
+ if(op.a==='put'&&op.t&&op.t.id){const ex=byId.get(op.t.id);const t=hydrate(op.t);
+  if(ex){const i=tasks.indexOf(ex);if(i>=0)tasks[i]=t;}else tasks.push(t);
+  writeQ.set(t.id,{op:'put',t});scheduleFlush();}
+ else if(op.a==='del'&&op.id){const ex=byId.get(op.id);
+  if(ex){const i=tasks.indexOf(ex);if(i>=0)tasks.splice(i,1);byId.delete(op.id);}
+  writeQ.set(op.id,{op:'del',id:op.id});scheduleFlush();}
+ else if(op.a==='all'){
+  if(op.t&&Array.isArray(op.t)){byId=new Map();tasks=op.t.map(hydrate);sortMaster();bigMode=tasks.length>20000;}
+  else if(db){setTimeout(()=>reloadFromIDB(op.n,4),1500);return;}}
+ rebuildAll();}
+async function reloadFromIDB(n,tries){try{const arr=await idbGetAll();
+ if(n&&arr.length<n&&tries>0){setTimeout(()=>reloadFromIDB(n,tries-1),1500);return;}
+ byId=new Map();tasks=arr.map(hydrate);sortMaster();bigMode=tasks.length>20000;rebuildAll();}catch(_){}}
+function poll(){try{const r=+localStorage.getItem('tb.rev')||0;
+ if(r>rev){const j=localStorage.getItem('tb.journal');if(j)applyOp(JSON.parse(j));}}catch(_){}}
+
+/* ---------- board rendering (virtualized) ---------- */
+function rowHTML(t,i){const od=t.status!=='done'&&t.due&&t.due<TODAY;
+ return '<div class="row" style="top:'+(i*ROWH)+'px" data-id="'+t.id+'"><span class="ttl">'+esc(t.title)+'</span><div class="rm"><span class="'+(od?'overdue':'')+'">'+esc(fmtDue(t.due))+(od?' · overdue':'')+'</span><span>'+esc(t.assignee)+' <button data-act="del" aria-label="Delete task">✕</button></span></div></div>';}
+function renderCol(st){const c=colEls[st],list=view[st];
+ c.spacer.style.height=list.length*ROWH+'px';c.cnt.textContent=list.length.toLocaleString();
+ c.empty.style.display=list.length?'none':'';
+ const start=Math.max(0,Math.floor(c.body.scrollTop/ROWH)-4);
+ const end=Math.min(list.length,start+Math.ceil(c.body.clientHeight/ROWH)+8);
+ let h='';for(let i=start;i<end;i++)h+=rowHTML(list[i],i);c.win.innerHTML=h;}
+function renderCols(){for(const st of STATUSES)renderCol(st);}
+function fmtDue(d){if(!d)return'—';const p=d.split('-');if(p.length<3)return d;return MONTHS[(+p[1]||1)-1]+' '+(+p[2]||'')+', '+p[0];}
+function buildDatalist(){const dl=$('assignees');if(tasks.length>3000){if(dl.options.length)dl.innerHTML='';return;}
+ const s=new Set();for(const t of tasks)if(t.assignee)s.add(t.assignee);
+ dl.innerHTML=Array.from(s).sort().map(n=>'<option value="'+esc(n)+'">').join('');}
+
+/* ---------- Gantt (canvas, no libraries) ---------- */
+let gRows=[];
+function addDays(iso,n){const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());}
+function dcnt(a,b){return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);}
+function daysInMonth(m){return new Date(+m.slice(0,4),+m.slice(5,7),0).getDate();}
+function drawGantt(){const cv=$('gcanvas'),wrap=$('gwrap');$('gtip').style.display='none';
+ const W=Math.max(320,wrap.clientWidth-20),dpr=window.devicePixelRatio||1;
+ const base=filter==='all'?view.todo.concat(view.doing,view.done):view[filter];
+ const dated=[];for(const t of base)if(t.due)dated.push(t);
+ gRows=[];
+ cv.width=Math.round(W*dpr);cv.style.width=W+'px';
+ const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+ ctx.font='11px system-ui,"Segoe UI",sans-serif';
+ if(!dated.length){cv.height=Math.round(60*dpr);cv.style.height='60px';ctx.fillStyle='#93a2c4';ctx.fillText('No dated tasks match the current search / filter.',10,32);return;}
+ const list=dated.slice(0,GCAP);
+ let min=list[0].due,max=list[0].due;
+ for(const t of list){if(t.due<min)min=t.due;if(t.due>max)max=t.due;}
+ min=addDays(min,-2);max=addDays(max,2);
+ const L=170,R=W-12,span=Math.max(1,dcnt(min,max));
+ const X=d=>L+dcnt(min,d)/span*(R-L);
+ const RH=16,top=26,H=top+list.length*RH+12;
+ cv.height=Math.round(H*dpr);cv.style.height=H+'px';
+ ctx.clearRect(0,0,W,H);
+ let m=min.slice(0,7)+'-01',guard=0;
+ while(m<=max&&guard++<600){const x=X(m);ctx.strokeStyle='#2a3555';ctx.beginPath();ctx.moveTo(x,top-8);ctx.lineTo(x,H);ctx.stroke();
+  ctx.fillStyle='#93a2c4';ctx.fillText(MONTHS[+m.slice(5,7)-1]+' '+m.slice(2,4),x+3,11);
+  m=addDays(m,daysInMonth(m));}
+ const tx=X(TODAY);
+ if(tx>=L&&tx<=R){ctx.strokeStyle='#e5604c';ctx.setLineDash([4,3]);ctx.beginPath();ctx.moveTo(tx,top-8);ctx.lineTo(tx,H);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#e5604c';ctx.fillText('today',tx+3,22);}
+ for(let i=0;i<list.length;i++){const t=list[i],y=top+i*RH;
+  if(i%2){ctx.fillStyle='#192238';ctx.fillRect(0,y,W,RH);}
+  const x1=Math.max(L,X(addDays(t.due,-3))),x2=Math.min(R,X(t.due));
+  ctx.fillStyle=COL[t.status]||'#888';ctx.fillRect(x1,y+4,Math.max(2,x2-x1),8);
+  ctx.fillStyle='#c9d4ea';let lab=t.title+' — '+t.assignee;
+  if(ctx.measureText(lab).width>L-14){while(lab.length>1&&ctx.measureText(lab+'…').width>L-14)lab=lab.slice(0,-1);lab+='…';}
+  ctx.fillText(lab,8,y+12);
+  gRows.push({y0:y,y1:y+RH,t});}
+ if(total>list.length){ctx.fillStyle='#93a2c4';ctx.fillText('Showing the first '+GCAP+' of '+total.toLocaleString()+' matching tasks — narrow the search or filter to see more.',L,H-4);}}
+function gHover(e){const r=e.target.getBoundingClientRect(),y=e.clientY-r.top;
+ const g=gRows.find(g=>y>=g.y0&&y<g.y1),tip=$('gtip');
+ if(!g){tip.style.display='none';return;}
+ tip.textContent=g.t.title+'\n'+g.t.assignee+' · '+g.t.status+' · due '+fmtDue(g.t.due);
+ tip.style.display='block';tip.style.left=Math.min(window.innerWidth-330,e.clientX+14)+'px';tip.style.top=(e.clientY+14)+'px';}
+
+/* ---------- editor / toasts ---------- */
+function openEditor(t){editing=t?t.id:null;$('dlgH').textContent=t?'Edit task':'New task';
+ $('fTitle').value=t?t.title:'';$('fStatus').value=t?t.status:'todo';$('fDue').value=t?t.due:'';$('fAssignee').value=t?t.assignee:'';
+ $('fDel').style.display=t?'':'none';$('dlg').showModal();$('fTitle').focus();}
+function closeDlg(){const d=$('dlg');if(d.open)d.close();editing=null;}
+function toast(msg,a){const d=document.createElement('div');d.className='toast'+(a===1?' err':'');
+ const s=document.createElement('span');s.textContent=msg;d.appendChild(s);
+ if(typeof a==='string'){const b=document.createElement('button');b.textContent=a;b.onclick=()=>d.remove();d.appendChild(b);}
+ $('toasts').appendChild(d);setTimeout(()=>d.remove(),a==='Undo'?8000:4000);return d;}
+function delTask(t){removeTask(t.id);rebuildAll();
+ const u=toast('Deleted “'+trunc(t.title,28)+'”','Undo');
+ u.querySelector('button').onclick=()=>{upsert(t);rebuildAll();u.remove();};}
+
+/* ---------- demo / export / import ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function genDemo(n){const rnd=mulberry32(42);
+ const A=['Refactor','Deploy','Migrate','Review','Design','Ship','Fix','Audit','Scale','Optimize','Document','Automate'];
+ const B=['auth service','checkout flow','search index','cache layer','API gateway','admin panel','export job','webhook relay','user database','settings page','email digests','reporting suite'];
+ const N=['Ava Chen','Liam Patel','Maya Roy','Noah Kim','Zoe Adams','Ethan Diaz','Lena Fox','Omar Hassan','Iris Nova','Raj Gupta','Sara Lin','Tom Becker'];
+ const now=Date.now(),arr=new Array(n);
+ for(let i=0;i<n;i++){const r1=rnd(),r2=rnd(),r3=rnd(),r4=rnd();
+  const d=new Date(now+Math.round(r2*420-60)*864e5);
+  arr[i]={id:'demo'+i,title:A[(r3*A.length)|0]+' '+B[(r4*B.length)|0],status:r1<0.5?'todo':r1<0.8?'doing':'done',
+   due:d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()),assignee:N[(r4*N.length)|0],updatedAt:now+i};}
+ return arr;}
+async function demo(){if(tasks.length&&!confirm('Replace all '+tasks.length.toLocaleString()+' current tasks with 100,000 demo tasks?'))return;
+ const b=$('btnDemo');b.disabled=true;toast('Generating 100,000 tasks…');
+ await new Promise(r=>setTimeout(r,30));
+ const arr=genDemo(100000);byId=new Map();tasks=arr.map(hydrate);
+ sortMaster();bigMode=true;rev++;persistRev();rebuildAll();
+ toast('Generated — writing to the local database…');
+ await idbReplaceAll(arr);publishAll();b.disabled=false;
+ toast(db?'100,000 tasks loaded and saved locally.':'100,000 tasks loaded (IndexedDB unavailable — persistence limited).',db?undefined:1);}
+function exportJSON(){try{
+ const blob=new Blob([JSON.stringify({app:'teamboard',rev,exportedAt:new Date().toISOString(),tasks:tasks.map(strip)})],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+ a.download='teamboard-backup-'+new Date().toISOString().slice(0,10)+'.json';
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+ toast('Backup exported ('+tasks.length.toLocaleString()+' tasks). Keep the file — it restores the board if browser storage is ever cleared.');}
+ catch(e){toast('Export failed: '+e.message,1);}}
+async function importJSON(e){const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;
+ try{const d=JSON.parse(await f.text());if(!d||!Array.isArray(d.tasks))throw new Error('file has no "tasks" array');
+  byId=new Map();tasks=d.tasks.map(hydrate);sortMaster();bigMode=tasks.length>20000;rev++;persistRev();rebuildAll();
+  await idbReplaceAll(tasks);publishAll();
+  toast('Imported '+tasks.length.toLocaleString()+' tasks.');}
+ catch(err){toast('Import failed: '+err.message,1);}}
+
+/* ---------- view mode / events / init ---------- */
+function setMode(m){mode=m;
+ $('board').style.display=m==='board'?'':'none';
+ $('ganttView').style.display=m==='gantt'?'block':'none';
+ $('btnB').classList.toggle('on',m==='board');$('btnG').classList.toggle('on',m==='gantt');
+ if(m==='gantt')drawGantt();else renderCols();}
+function bindEvents(){
+ $('btnB').onclick=()=>setMode('board');
+ $('btnG').onclick=()=>setMode('gantt');
+ $('btnNew').onclick=()=>openEditor(null);
+ $('btnDemo').onclick=demo;
+ $('btnExp').onclick=exportJSON;
+ $('btnImp').onclick=()=>$('impFile').click();
+ $('impFile').onchange=importJSON;
+ $('fFilter').onchange=e=>{filter=e.target.value;
+  document.querySelectorAll('.col').forEach(c=>c.classList.toggle('hide',filter!=='all'&&c.dataset.st!==filter));
+  rebuildAll();};
+ let sR=0;$('q').oninput=e=>{query=e.target.value;if(sR)return;sR=requestAnimationFrame(()=>{sR=0;rebuildAll();});};
+ $('board').onclick=e=>{const row=e.target.closest('.row');if(!row)return;const t=byId.get(row.dataset.id);if(!t)return;
+  const b=e.target.closest('button[data-act]');if(b&&b.dataset.act==='del')delTask(t);else openEditor(t);};
+ for(const st of STATUSES){let r=0;colEls[st].body.addEventListener('scroll',()=>{if(r)return;r=requestAnimationFrame(()=>{r=0;renderCol(st);});});}
+ window.addEventListener('resize',()=>requestAnimationFrame(()=>{renderCols();if(mode==='gantt')drawGantt();}));
+ const cv=$('gcanvas');
+ cv.addEventListener('mousemove',gHover);
+ cv.addEventListener('mouseleave',()=>$('gtip').style.display='none');
+ $('frm').onsubmit=e=>{e.preventDefault();const was=editing;
+  const t={id:was||('t'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
+   title:$('fTitle').value.trim(),status:$('fStatus').value,due:$('fDue').value,assignee:$('fAssignee').value.trim()};
+  closeDlg();upsert(t);rebuildAll();toast(was?'Task updated':'Task created');};
+ $('fCancel').onclick=closeDlg;
+ $('fDel').onclick=()=>{const t=byId.get(editing);closeDlg();if(t)delTask(t);};
+ try{bc=new BroadcastChannel('teamboard');bc.onmessage=e=>{try{applyOp(e.data);}catch(_){}};}catch(_){bc=null;}
+ window.addEventListener('storage',e=>{if(e.key==='tb.journal'&&e.newValue){try{applyOp(JSON.parse(e.newValue));}catch(_){}}});}
+(async function init(){
+ bindEvents();
+ try{db=await idbOpen();}catch(_){db=null;}
+ await loadState();
+ rebuildAll();
+ setInterval(poll,500);
+ if(!tasks.length)setTimeout(()=>toast('Welcome — create a task, or load the 100k demo to see the board at scale.'),400);
+})();
+</script>
+</body>
+</html>
