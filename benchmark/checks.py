@@ -396,8 +396,15 @@ def spec04(root):
                 else:
                     out(3, "PASS", f"all {len(markers)} slide segment(s) at 40 words or fewer (chrome and notes excluded)")
         note_hits = len(re.findall(r"data-notes\s*=|<aside\b", html, re.I))
-        if note_hits >= 8:
-            out(4, "PASS", f"{note_hits} speaker-note marker(s) found")
+        # 2026-11-01 (audit B11): marker presence alone passed decks whose asides were
+        # empty until JS filled them; count non-empty asides instead, fail open to MANUAL.
+        non_empty = sum(1 for a in re.findall(r"<aside\b[^>]*>(.*?)</aside>", html, re.I | re.S)
+                        if visible_text(a).strip())
+        if non_empty >= 8:
+            out(4, "PASS", f"{non_empty} speaker-note aside(s) with visible text")
+        elif note_hits >= 8:
+            out(4, "MANUAL", f"{note_hits} note marker(s) but only {non_empty} with static text; "
+                             "open the deck, toggle notes (N key or control), verify notes with content on all 8 slides")
         elif note_hits == 0:
             # 2026-10-31: a baseline deck rendered notes via JS-created asides — static absence
             # is not conclusive; the notes UI must be checked live
@@ -405,11 +412,14 @@ def spec04(root):
                              "verify notes with content on all 8 slides")
         else:
             out(4, "MANUAL", f"{note_hits} note marker(s) static; confirm notes on all 8 slides")
-            manual_block([
-                (6, "confirm text is 24pt equivalent with 4.5:1 contrast"),
-                (8, "check arrow-key navigation works"),
-                (10, "open the file; no repair prompts or console errors"),
-            ])
+        # 2026-11-01 (audit B10): criteria 6/8/10 were printed only when 1-7 note markers
+        # existed; the promised one-line-per-criterion contract broke on the other branches
+        # (verified live: all four 04-run outputs lacked c6/c8/c10). Always print them.
+        manual_block([
+            (6, "confirm text is 24pt equivalent with 4.5:1 contrast"),
+            (8, "check arrow-key navigation works"),
+            (10, "open the file; no repair prompts or console errors"),
+        ])
 
     manual_block([
         (2, "read each headline; takeaway, not a topic label"),
