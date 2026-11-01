@@ -1,0 +1,25 @@
+{
+  "run": "glm-5.3-flash/tier1/skill/H5-brownfield/run1",
+  "dir": "tier1/skill/H5-brownfield/run1",
+  "date": "2026-11-01",
+  "arm": "skill",
+  "model": "glm-5.3-flash",
+  "skill_version": "v0.1.4 (SKILL.md sha256 prefix e183a8cd00db0302)",
+  "first_run": {
+    "criteria_passed": 8,
+    "criteria_total": 8,
+    "percent": 100.0,
+    "runner": "C1-C8 all PASS exit 0 (agent ran it three times itself)",
+    "c5_manual": "PASS - overdue marker on open past-due rows, dropdown present (verified live)"
+  },
+  "fix_rounds_to_100": 0,
+  "fix_round_log": [],
+  "regressions": 0,
+  "tokens_first_run": 7749428,
+  "tokens_total_incl_fix_rounds": 7749428,
+  "duration_s_first_run": 2320,
+  "one_shot_fingerprint": true,
+  "contamination": "none",
+  "skill_behavior_notes": "Self-caught and fixed a real concurrency defect during its own parallel testing (shared temp filename collided across processes -> pid-unique temp + bounded rename retry + 500 handler). 51/51 tests. one-shot-work/ complete with GATE.md PASS.",
+  "notes": "Token cost 7.75M vs baseline 2.88M/1.57M for the same spec - the skill arm verified far more (3 runner runs, parallel repeat suites, browser at 3 widths). This is the token-for-depth trade the README describes."
+}

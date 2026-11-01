@@ -1,0 +1,86 @@
+{
+  "1": {
+    "ok": true,
+    "evidence": "register 201, login 200 (customer A)"
+  },
+  "21": {
+    "ok": true,
+    "evidence": "GET /api/now -> {'now_utc': '2027-03-13T09:00:00Z', 'now_local': '2027-03-13 03:00', 'clock_override': True, 'app_now_raw': '2027-03-13T09:00:00'}"
+  },
+  "4": {
+    "ok": true,
+    "evidence": "1h-ahead 422, 60d+ 422, past refused"
+  },
+  "11": {
+    "ok": false,
+    "evidence": "Mon 9:00 local booked as 409; payload has 14:00Z + 9:00 AM display: None"
+  },
+  "5": {
+    "ok": false,
+    "evidence": "90-min color at 10:00 blocks 11:15 (409); 11:30 allowed (409)"
+  },
+  "2": {
+    "ok": true,
+    "evidence": "Ben Sat slots end-by-13:00: 12:45 present=False (must be absent), 12:30 present=True; 15 slots"
+  },
+  "10": {
+    "ok": true,
+    "evidence": "Sunday slots=0 (must be 0); Cleo earliest=11:00 (>=11:00), Tue+Wed only"
+  },
+  "3": {
+    "ok": true,
+    "evidence": "'any' booking -> 201, ref CW-XANRW4"
+  },
+  "6": {
+    "ok": false,
+    "evidence": "exactly one success in 0/5 parallel rounds (Ben 15:00Z Mar 18)"
+  },
+  "7": {
+    "ok": false,
+    "evidence": "cancel 6 days out 404; cancel at 23h 404 with message: {\"error\": \"Booking not found.\"}"
+  },
+  "8": {
+    "ok": false,
+    "evidence": "admin cancel w/o reason 404; with reason 404"
+  },
+  "9": {
+    "ok": false,
+    "evidence": "reschedule keeps ref None -> 404; new start in payload"
+  },
+  "12": {
+    "ok": false,
+    "evidence": "B reading A's booking -> 401"
+  },
+  "13": {
+    "ok": true,
+    "evidence": "stylist schedule 200; stylist booking attempt 403"
+  },
+  "14": {
+    "ok": true,
+    "evidence": "9-char password 422; bcrypt prefix in db file: True"
+  },
+  "15": {
+    "ok": true,
+    "evidence": "failed logins: [401, 401, 401, 401, 401, 429]"
+  },
+  "17": {
+    "ok": true,
+    "evidence": "8 outbox file(s): ['20270313T090000Z-confirmation-CW-G247A6-63c6e9.txt', '20270313T090000Z-confirmation-CW-J47X7J-afcaef.txt', '20270313T090000Z-confirmation-CW-KH8C64-a030a9.txt']"
+  },
+  "18": {
+    "ok": true,
+    "evidence": "page1 200 (8 rows <=20), page2 200; filters supported: date,stylistId,status"
+  },
+  "19": {
+    "ok": true,
+    "evidence": "CSV 200; header: ref,start,end,service,stylist,customer_email,status"
+  },
+  "20": {
+    "ok": true,
+    "evidence": "admin audit 200 with before/after; customer blocked 403"
+  },
+  "16": {
+    "ok": true,
+    "evidence": "8 refs sampled, 0 duplicates (full 200-booking check covered by the test suite)"
+  }
+}

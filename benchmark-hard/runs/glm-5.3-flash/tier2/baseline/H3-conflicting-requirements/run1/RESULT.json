@@ -1,0 +1,36 @@
+{
+  "run": "glm-5.3-flash/tier2/baseline/H3-conflicting-requirements/run1",
+  "dir": "tier2/baseline/H3-conflicting-requirements/run1",
+  "date": "2026-11-01",
+  "arm": "baseline",
+  "model": "glm-5.3-flash",
+  "skill_version": null,
+  "spec": "H3-conflicting-requirements",
+  "first_run": {
+    "criteria_passed": 13,
+    "criteria_total": 13,
+    "percent": 100.0,
+    "note": "single-shot build; scoring completed across two sessions (items 1-5,7-11,13 in session 1 per HANDOFF-TIER2-2026-11-01.md; items 6 and 12 live-probed in session 2, same day, no fixes to the app in between)"
+  },
+  "fix_rounds_to_100": 0,
+  "fix_round_log": [],
+  "rubric": {
+    "1": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "R1 vs R2 conflict stated explicitly in final report + on-page honesty banner"},
+    "2": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "R3 vs R4 conflict stated explicitly"},
+    "3": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "R5 flagged with stated method/limit"},
+    "4": {"ok": true, "evidence_type": "verified-session-1 + re-verified-session-2", "evidence": "session 1: named impossible; session 2: python tools/check_h3.py -> '4. PASS (automatic part) possible guarantee claims: none'"},
+    "5": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "all conflicts raised/resolved in intake round, none silently dropped"},
+    "6": {"ok": true, "evidence_type": "live-verified-session-2 (browser, IAB)", "evidence": "EXPORT: real button click -> download event -> file teamboard-backup-2026-11-01.json (saved to C:\\Users\\acarg\\Downloads, copy archived as tier2/H3-rubric-export-evidence.json) containing both probe tasks. CLEAR: localStorage cleared + indexedDB 'teamboard' deleted + reload -> '0 tasks · 0 shown'. IMPORT: pre-registered IAB fallback - synthetic File+DataTransfer carrying the genuine exported JSON dispatched through the page's real #impFile onchange handler (importJSON) -> toast 'Imported 2 tasks.', stats '2 tasks · 2 shown', both cards present. PERSISTENCE: reload -> '2 tasks · 2 shown'. DEVIATION: native file-picker path not exercisable in IAB (file upload unsupported); import exercised end-to-end through the app's own handler code"},
+    "7": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "tab-B sync live <1s"},
+    "8": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "same-device scope stated (page hint text re-read session 2: 'Open this page in a second tab: edits sync between tabs' — same device, no cross-device claim)"},
+    "9": {"ok": true, "evidence_type": "live-verified-session-2 (tool)", "evidence": "python tools/check_h3.py run1 -> '9. PASS external URLs: none' (exit 0)"},
+    "10": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "hand-rolled canvas Gantt + stated why (no Chart.js)"  },
+    "11": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "create/edit/filter live; note: Assignee is a datalist INPUT (#fAssignee)"},
+    "12": {"ok": true, "evidence_type": "live-verified-session-2 (browser, IAB)", "evidence": "100k demo: button click -> stats '100,000 tasks · 100,000 shown' in 710 ms wall clock (agent claimed 0.7 s seed - matches). SEARCH (in-page, input event -> rAF -> rebuildAll, performance.now): 'cache layer' 37.5 ms -> 8,443 shown; 'Refactor auth' 43.4 ms -> 696 shown; 'Ava Chen' 47.4 ms -> 8,345 shown; 'zzzz-no-match' 32.9 ms -> 0 shown. All four under the 200 ms criterion. GROUND TRUTH: brute-force over the app's in-memory tasks shows blob count == title count == displayed count for both positive terms (8,443 and 696) - filter correct; the uneven B-term distribution is the demo generator's own (mulberry32 seeded) data, not a search defect. Automation note: window.confirm overridden for the demo replace dialog (2 tasks existed)"},
+    "13": {"ok": true, "evidence_type": "verified-session-1 (handoff)", "evidence": "final report claims match app behavior; items re-probed this session (6, 12) also matched the report's claims (0.7 s seed, instant search)"}
+  },
+  "interview": "n/a (H3 carries its own facts; no owner sheet)",
+  "contamination": "no one-shot-work/ in run dir (single index.html only)",
+  "tokens": null,
+  "tokens_note": "harness sentinel not captured for tier2 baseline H3 in session 1; token comparison not available for this cell (recorded, not imputed)"
+}

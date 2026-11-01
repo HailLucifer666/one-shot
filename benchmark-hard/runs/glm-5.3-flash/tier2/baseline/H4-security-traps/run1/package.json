@@ -1,0 +1,18 @@
+{
+  "name": "recipebox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RecipeBox - a community recipe board",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
+  }
+}

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ember &amp; Oak — Neighborhood Coffeehouse in Riverton</title>
+  <meta name="description" content="Small-batch espresso, single-origin pour overs, and pastries that sell out by noon. Ember &amp; Oak is a neighborhood coffeehouse at 14 Lantern Lane in Riverton.">
+  <meta property="og:title" content="Ember &amp; Oak — Neighborhood Coffeehouse">
+  <meta property="og:description" content="Slow mornings, honest coffee. Small-batch espresso and fresh pastries at 14 Lantern Lane, Riverton.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231E1612'/%3E%3Cpath d='M18 26h22v12a11 11 0 0 1-11 11 11 11 0 0 1-11-11z' fill='%23FAF5EE'/%3E%3Cpath d='M40 29h6a6 6 0 0 1 0 12h-6' fill='none' stroke='%23FAF5EE' stroke-width='4'/%3E%3Cpath d='M25 19c-3-4 3-6 0-10M34 19c-3-4 3-6 0-10' stroke='%23D9822B' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>document.documentElement.classList.add('js');</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "CafeOrCoffeeShop",
+    "name": "Ember & Oak",
+    "email": "hello@emberandoak.example",
+    "servesCuisine": "Coffee",
+    "priceRange": "$",
+    "telephone": "555-0142",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "14 Lantern Lane",
+      "addressLocality": "Riverton",
+      "addressCountry": "US"
+    },
+    "openingHoursSpecification": [
+      { "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], "opens": "07:00", "closes": "18:00" },
+      { "@type": "OpeningHoursSpecification", "dayOfWeek": "Saturday", "opens": "08:00", "closes": "16:00" },
+      { "@type": "OpeningHoursSpecification", "dayOfWeek": "Sunday", "opens": "08:00", "closes": "16:00" }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <nav class="nav container" aria-label="Primary">
+      <a class="brand" href="#home">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+          <rect width="64" height="64" rx="14" fill="#1E1612"></rect>
+          <path d="M18 26h22v12a11 11 0 0 1-11 11 11 11 0 0 1-11-11z" fill="#FAF5EE"></path>
+          <path d="M40 29h6a6 6 0 0 1 0 12h-6" fill="none" stroke="#FAF5EE" stroke-width="4"></path>
+          <path d="M25 19c-3-4 3-6 0-10M34 19c-3-4 3-6 0-10" stroke="#D9822B" stroke-width="3" fill="none" stroke-linecap="round"></path>
+        </svg>
+        <span>Ember &amp; Oak</span>
+      </a>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Toggle navigation">
+        <span class="nav-toggle-bar" aria-hidden="true"></span>
+        <span class="nav-toggle-bar" aria-hidden="true"></span>
+        <span class="nav-toggle-bar" aria-hidden="true"></span>
+      </button>
+      <ul id="nav-links" class="nav-links">
+        <li><a class="nav-link" href="#menu">Menu</a></li>
+        <li><a class="nav-link" href="#about">About</a></li>
+        <li><a class="nav-link" href="#hours">Hours &amp; Location</a></li>
+        <li><a class="nav-link" href="#contact">Contact</a></li>
+        <li><a class="btn btn-primary btn-small" href="#menu">Order Ahead</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+
+    <!-- ============ SECTION 1: HERO ============ -->
+    <section id="home" class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Ember &amp; Oak &middot; neighborhood coffeehouse &middot; Riverton</p>
+          <h1 class="hero-title">Slow mornings, honest coffee.</h1>
+          <p class="hero-lede">
+            Small-batch espresso, single-origin pour overs, and pastries that
+            sell out by noon. Pull up a chair &mdash; the corner table&rsquo;s yours.
+          </p>
+          <div class="hero-ctas">
+            <a class="btn btn-primary" href="#menu">See the menu</a>
+            <a class="btn btn-ghost" href="#hours">Plan your visit</a>
+          </div>
+          <p class="hero-note" id="open-note-wrap">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="open-note">Open daily &middot; weekdays 7 am &ndash; 6 pm</span>
+          </p>
+        </div>
+        <div class="hero-art" aria-hidden="false">
+          <svg viewBox="0 0 340 280" role="img" aria-label="Illustration of a steaming cup of coffee on a saucer">
+            <circle cx="170" cy="150" r="126" fill="#F0E2C9"></circle>
+            <ellipse cx="170" cy="240" rx="100" ry="14" fill="#E2CDAB"></ellipse>
+            <ellipse cx="170" cy="233" rx="92" ry="13" fill="#FFFDF8" stroke="#D9C9AC" stroke-width="2"></ellipse>
+            <path d="M100 130h140v44a52 52 0 0 1-52 52h-36a52 52 0 0 1-52-52z" fill="#FFFDF8" stroke="#D9C9AC" stroke-width="3"></path>
+            <ellipse cx="170" cy="130" rx="70" ry="12" fill="#6F4A2F"></ellipse>
+            <path d="M240 142c30-2 40 12 38 28s-18 26-44 22" fill="none" stroke="#D9C9AC" stroke-width="9" stroke-linecap="round"></path>
+            <rect x="118" y="162" width="104" height="10" rx="5" fill="#D9822B" opacity="0.9"></rect>
+            <g class="steam" fill="none" stroke="#D9822B" stroke-width="7" stroke-linecap="round">
+              <path class="s1" d="M138 106c-10-14 10-22 0-38"></path>
+              <path class="s2" d="M170 102c-12-16 12-24 0-44"></path>
+              <path class="s3" d="M202 106c-10-14 10-22 0-38"></path>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2: MENU ============ -->
+    <section id="menu" class="section section-menu">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">What we pour &amp; bake</p>
+          <h2>Menu</h2>
+          <p class="lede">Everything is made to order. Oat, almond, and whole milk are always the same price.</p>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="Menu categories">
+          <button class="tab" role="tab" id="tab-all" aria-selected="true" aria-controls="menu-grid" data-category="all">All</button>
+          <button class="tab" role="tab" id="tab-espresso" aria-selected="false" aria-controls="menu-grid" data-category="espresso" tabindex="-1">Espresso Bar</button>
+          <button class="tab" role="tab" id="tab-brew" aria-selected="false" aria-controls="menu-grid" data-category="brew" tabindex="-1">Brew Bar</button>
+          <button class="tab" role="tab" id="tab-cold" aria-selected="false" aria-controls="menu-grid" data-category="cold" tabindex="-1">Cold &amp; Iced</button>
+          <button class="tab" role="tab" id="tab-pastry" aria-selected="false" aria-controls="menu-grid" data-category="pastry" tabindex="-1">Pastries</button>
+        </div>
+        <p id="menu-status" class="visually-hidden" role="status"></p>
+
+        <div class="menu-grid" id="menu-grid" role="tabpanel" aria-labelledby="tab-all">
+          <article class="menu-item" data-category="espresso">
+            <div class="mi-top"><h3 class="mi-name">Espresso</h3><span class="mi-price">$3.25</span></div>
+            <p class="mi-desc">A double shot of our house blend, pulled short and syrupy.</p>
+          </article>
+          <article class="menu-item" data-category="espresso">
+            <div class="mi-top"><h3 class="mi-name">Cortado</h3><span class="mi-price">$4.00</span></div>
+            <p class="mi-desc">Equal parts espresso and steamed milk. Four ounces, no fuss.</p>
+          </article>
+          <article class="menu-item" data-category="espresso">
+            <div class="mi-top"><h3 class="mi-name">Flat White</h3><span class="mi-price">$4.75</span></div>
+            <p class="mi-desc">Two ristretto shots under a thin coat of velveted milk.</p>
+            <span class="badge">House favorite</span>
+          </article>
+          <article class="menu-item" data-category="espresso">
+            <div class="mi-top"><h3 class="mi-name">Cappuccino</h3><span class="mi-price">$4.75</span></div>
+            <p class="mi-desc">Dry and dusted with cocoa, the way the regulars order it.</p>
+          </article>
+          <article class="menu-item" data-category="espresso">
+            <div class="mi-top"><h3 class="mi-name">Latte</h3><span class="mi-price">$5.00</span></div>
+            <p class="mi-desc">Espresso and steamed milk. Add vanilla, hazelnut, or honey for 50&cent;.</p>
+          </article>
+          <article class="menu-item" data-category="espresso">
+            <div class="mi-top"><h3 class="mi-name">Oat Milk Latte</h3><span class="mi-price">$5.00</span></div>
+            <p class="mi-desc">A double shot under silky-steamed oat milk, with a pinch of sea salt.</p>
+            <span class="badge">House favorite</span>
+          </article>
+          <article class="menu-item" data-category="espresso">
+            <div class="mi-top"><h3 class="mi-name">Mocha</h3><span class="mi-price">$5.50</span></div>
+            <p class="mi-desc">Dark drinking chocolate from a small Oregon maker, topped with cream.</p>
+          </article>
+
+          <article class="menu-item" data-category="brew">
+            <div class="mi-top"><h3 class="mi-name">Drip of the Day</h3><span class="mi-price">$3.00</span></div>
+            <p class="mi-desc">Always fresh, always refills. Ask what&rsquo;s on today.</p>
+          </article>
+          <article class="menu-item" data-category="brew">
+            <div class="mi-top"><h3 class="mi-name">Pour Over</h3><span class="mi-price">$4.50</span></div>
+            <p class="mi-desc">A single origin, brewed to order by hand. Takes four minutes.</p>
+            <span class="badge">House favorite</span>
+          </article>
+          <article class="menu-item" data-category="brew">
+            <div class="mi-top"><h3 class="mi-name">Caf&eacute; au Lait</h3><span class="mi-price">$4.00</span></div>
+            <p class="mi-desc">Drip coffee and steamed milk, half and half in every sense.</p>
+          </article>
+          <article class="menu-item" data-category="brew">
+            <div class="mi-top"><h3 class="mi-name">Hot Chocolate</h3><span class="mi-price">$4.25</span></div>
+            <p class="mi-desc">Real melted chocolate, not powder. Kids&rsquo; size available.</p>
+          </article>
+
+          <article class="menu-item" data-category="cold">
+            <div class="mi-top"><h3 class="mi-name">Cold Brew</h3><span class="mi-price">$4.75</span></div>
+            <p class="mi-desc">Steeped for 18 hours, poured over ice. Smooth with a cocoa finish.</p>
+          </article>
+          <article class="menu-item" data-category="cold">
+            <div class="mi-top"><h3 class="mi-name">Iced Latte</h3><span class="mi-price">$5.25</span></div>
+            <p class="mi-desc">Double shot shaken with cold milk over ice.</p>
+          </article>
+          <article class="menu-item" data-category="cold">
+            <div class="mi-top"><h3 class="mi-name">Espresso Tonic</h3><span class="mi-price">$5.75</span></div>
+            <p class="mi-desc">A bright shot over artisan tonic, orange peel, and lots of ice.</p>
+            <span class="badge">Seasonal</span>
+          </article>
+
+          <article class="menu-item" data-category="pastry">
+            <div class="mi-top"><h3 class="mi-name">Butter Croissant</h3><span class="mi-price">$3.75</span></div>
+            <p class="mi-desc">Laminated over three days at the bakery next door.</p>
+          </article>
+          <article class="menu-item" data-category="pastry">
+            <div class="mi-top"><h3 class="mi-name">Almond Croissant</h3><span class="mi-price">$3.75</span></div>
+            <p class="mi-desc">Twice-baked with almond cream and toasted flaked almonds.</p>
+            <span class="badge">House favorite</span>
+          </article>
+          <article class="menu-item" data-category="pastry">
+            <div class="mi-top"><h3 class="mi-name">Ham &amp; Gruy&egrave;re Croissant</h3><span class="mi-price">$6.50</span></div>
+            <p class="mi-desc">Warmed until the cheese just gives. The best breakfast in Riverton.</p>
+          </article>
+          <article class="menu-item" data-category="pastry">
+            <div class="mi-top"><h3 class="mi-name">Cardamom Bun</h3><span class="mi-price">$3.50</span></div>
+            <p class="mi-desc">Twisted, sticky, and heavy on the cardamom sugar.</p>
+            <span class="badge">House favorite</span>
+          </article>
+          <article class="menu-item" data-category="pastry">
+            <div class="mi-top"><h3 class="mi-name">Banana Bread</h3><span class="mi-price">$4.00</span></div>
+            <p class="mi-desc">Thick slice, toasted, with salted butter on the side.</p>
+          </article>
+          <article class="menu-item" data-category="pastry">
+            <div class="mi-top"><h3 class="mi-name">Lemon Poppy Loaf</h3><span class="mi-price">$4.25</span></div>
+            <p class="mi-desc">Glazed with lemon syrup. Pairs well with a pour over.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 3: ABOUT ============ -->
+    <section id="about" class="section section-about">
+      <div class="container about-grid">
+        <div class="about-copy">
+          <p class="eyebrow eyebrow-light">Our story</p>
+          <h2>About</h2>
+          <p>Ember & Oak opened in 2019 in a former hardware store. We roast in small batches every Tuesday. Everything in the case is baked before sunrise.</p>
+          <blockquote class="pull-quote">
+            <p>&ldquo;Come as a customer twice and we&rsquo;ll call it your regular order.&rdquo;</p>
+            <cite>&mdash; Mara &amp; Dev, owners</cite>
+          </blockquote>
+          <ul class="values" aria-label="What we stand for">
+            <li class="value-chip">Small-batch roasted in house</li>
+            <li class="value-chip">Milk from Alder Creek Dairy</li>
+            <li class="value-chip">Pastries baked each morning</li>
+            <li class="value-chip">Compostable cups &amp; lids</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 4: HOURS AND LOCATION ============ -->
+    <section id="hours" class="section section-hours">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Visit us</p>
+          <h2>Hours and Location</h2>
+          <p class="lede">We&rsquo;re open 7 am to 6 pm on weekdays and 8 am to 4 pm on weekends. Find us at 14 Lantern Lane, under the green awning.</p>
+        </div>
+        <div class="visit-grid">
+          <div class="visit-card">
+            <h3>Opening hours</h3>
+            <table class="hours-table">
+              <tbody>
+                <tr data-day="1"><th scope="row">Monday</th><td>7 am &ndash; 6 pm</td></tr>
+                <tr data-day="2"><th scope="row">Tuesday</th><td>7 am &ndash; 6 pm</td></tr>
+                <tr data-day="3"><th scope="row">Wednesday</th><td>7 am &ndash; 6 pm</td></tr>
+                <tr data-day="4"><th scope="row">Thursday</th><td>7 am &ndash; 6 pm</td></tr>
+                <tr data-day="5"><th scope="row">Friday</th><td>7 am &ndash; 6 pm</td></tr>
+                <tr data-day="6"><th scope="row">Saturday</th><td>8 am &ndash; 4 pm</td></tr>
+                <tr data-day="0"><th scope="row">Sunday</th><td>8 am &ndash; 4 pm</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="visit-card">
+            <h3>Location</h3>
+            <address class="address">
+              <p>14 Lantern Lane<br>Riverton</p>
+              <p>
+                <a href="tel:5550142">555-0142</a>
+              </p>
+              <a class="btn btn-primary btn-small" href="https://www.google.com/maps/search/?api=1&amp;query=14+Lantern+Lane+Riverton" target="_blank" rel="noopener">Get directions</a>
+            </address>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 5: CONTACT ============ -->
+    <section id="contact" class="section section-contact">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Say hello</p>
+          <h2>Contact</h2>
+          <p class="lede">Questions, catering, or saving the big corner table? Email <a href="mailto:hello@emberandoak.example">hello@emberandoak.example</a> or use the form &mdash; we reply within two business days.</p>
+        </div>
+        <div class="visit-card contact-card">
+          <form id="contact-form" class="contact-form" novalidate>
+            <div class="field">
+              <label for="cf-name">Your name</label>
+              <input type="text" id="cf-name" name="name" autocomplete="name" required aria-describedby="err-name">
+              <p class="error-text" id="err-name" hidden>Please tell us your name.</p>
+            </div>
+            <div class="field">
+              <label for="cf-email">Email</label>
+              <input type="email" id="cf-email" name="email" autocomplete="email" required aria-describedby="err-email">
+              <p class="error-text" id="err-email" hidden>That email doesn&rsquo;t look right &mdash; check for typos.</p>
+            </div>
+            <div class="field">
+              <label for="cf-topic">What&rsquo;s it about? <span class="optional">(optional)</span></label>
+              <select id="cf-topic" name="topic">
+                <option value="general">Just saying hello</option>
+                <option value="catering">Catering &amp; large orders</option>
+                <option value="events">Private events</option>
+                <option value="wholesale">Wholesale beans</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cf-message">Message</label>
+              <textarea id="cf-message" name="message" rows="5" required aria-describedby="err-message"></textarea>
+              <p class="error-text" id="err-message" hidden>A short message helps us help you.</p>
+            </div>
+            <button type="submit" class="btn btn-primary">Send message</button>
+          </form>
+          <div id="form-success" class="form-success" hidden tabindex="-1">
+            <h4>Got it &mdash; thanks!</h4>
+            <p>We&rsquo;ll get back to you within two business days. If it&rsquo;s urgent, call <a href="tel:5550142">555-0142</a>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <a class="brand brand-light" href="#home">
+          <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <rect width="64" height="64" rx="14" fill="#FAF5EE"></rect>
+            <path d="M18 26h22v12a11 11 0 0 1-11 11 11 11 0 0 1-11-11z" fill="#1E1612"></path>
+            <path d="M40 29h6a6 6 0 0 1 0 12h-6" fill="none" stroke="#1E1612" stroke-width="4"></path>
+            <path d="M25 19c-3-4 3-6 0-10M34 19c-3-4 3-6 0-10" stroke="#D9822B" stroke-width="3" fill="none" stroke-linecap="round"></path>
+          </svg>
+          <span>Ember &amp; Oak</span>
+        </a>
+        <p>Slow mornings, honest coffee. Roasting in Riverton since 2019.</p>
+        <p><a href="mailto:hello@emberandoak.example">hello@emberandoak.example</a></p>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        <h3>Explore</h3>
+        <ul>
+          <li><a href="#menu">Menu</a></li>
+          <li><a href="#about">About</a></li>
+          <li><a href="#hours">Hours &amp; location</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </nav>
+      <div class="footer-hours">
+        <h3>Hours</h3>
+        <ul>
+          <li>Mon&ndash;Fri &middot; 7 am &ndash; 6 pm</li>
+          <li>Sat&ndash;Sun &middot; 8 am &ndash; 4 pm</li>
+        </ul>
+        <div class="social" aria-label="Social media">
+          <a href="#home" aria-label="Instagram (placeholder)" title="Placeholder link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none"></circle></svg>
+          </a>
+          <a href="#home" aria-label="Facebook (placeholder)" title="Placeholder link">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 8h2.2V5H13.6A3.6 3.6 0 0 0 10 8.6V11H8v3h2v7h3v-7h2.3l.5-3H13V9a1 1 0 0 1 1-1z"></path></svg>
+          </a>
+          <a href="#home" aria-label="X (placeholder)" title="Placeholder link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"></path></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="container footer-bottom">
+      <p>&copy; <span id="year">2026</span> Ember &amp; Oak. All rights reserved.</p>
+      <p class="footer-fine">14 Lantern Lane, Riverton</p>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

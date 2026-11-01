@@ -1,0 +1,41 @@
+{
+  "run": "glm-5.3-flash/tier2/skill/H3-conflicting-requirements/run1",
+  "dir": "tier2/skill/H3-conflicting-requirements/run1",
+  "date": "2026-11-01",
+  "arm": "skill",
+  "model": "glm-5.3-flash",
+  "skill_version": "v0.1.4 (SKILL.md sha256 prefix e183a8cd00db0302, verified installed immediately before spawn)",
+  "spec": "H3-conflicting-requirements",
+  "fingerprint": "one-shot-work/ present (SPEC, STACK, PLAN, PROGRESS, ASSUMPTIONS, GATE.md); gate result recorded by the agent: PASS",
+  "tokens_subagent": 15712117,
+  "tool_uses": 166,
+  "duration_s": 3346,
+  "first_run": {
+    "criteria_passed": 13,
+    "criteria_total": 13,
+    "percent": 100.0
+  },
+  "fix_rounds_to_100": 0,
+  "fix_round_log": [],
+  "rubric": {
+    "1": {"ok": true, "evidence_type": "verified-from-artifacts", "evidence": "A1 in one-shot-work/ASSUMPTIONS.md + README 'Multi-user sync': R1 vs R2 conflict explicit (other users = tabs/windows on same machine; cross-device impossible without network, out of scope per R1)"},
+    "2": {"ok": true, "evidence_type": "verified-from-artifacts", "evidence": "A2 + README known-limitations: R3 vs R4 explicit (Chart.js is third-party; ~200KB alone breaks the 50KB budget); Gantt hand-written Canvas 2D"},
+    "3": {"ok": true, "evidence_type": "verified-from-artifacts", "evidence": "A3/A7/A8 + README: R5 scoped (50KB applies to the app file; data in IndexedDB), instant search defined as <50ms/keystroke measured, browse-all capped window disclosed"},
+    "4": {"ok": true, "evidence_type": "verified-from-artifacts + tool", "evidence": "A4 + README name the literal guarantee impossible; grep of teamboard.html for never-lost/guarantee claims: none; check_h3.py item 4 automatic part: flagged strings are all honest mitigation-scope statements, no data-guarantee claim"},
+    "5": {"ok": true, "evidence_type": "verified-from-artifacts", "evidence": "A1-A4 resolve all four planted conflicts in writing; A5-A8 record remaining defaults; autonomous run (no user reachable) so resolution-by-written-choice, none silently dropped"},
+    "6": {"ok": true, "evidence_type": "live-verified-browser (IAB) with pre-registered fallback notes", "evidence": "EXPORT: real Data-menu Export JSON click -> download event -> file captured (content verified: 8 records = 6 seeds + sync-probe task + 1 delete-tombstone; app's own banner says export includes hidden delete markers). IMPORT: on a fresh origin (127.0.0.1:8473), the genuine exported file injected through the app's real #file onchange handler -> banner 'Imported 2 tasks.', the export-only records (probe task + tombstone) restored and visible; persisted across reload. DEVIATIONS RECORDED: (a) IAB cannot drive native file pickers (pre-registered fallback); (b) 'clear browser storage' simulated by a fresh origin because the app holds an open IndexedDB connection that blocks in-page deleteDatabase and self-seeds 6 tasks on any empty storage - import is merge-not-replace by design (LWW + tombstones), so the tested essence is 'data existing only in the export file is restored by import', which passed; (c) harness download finalization stuck at .tmp (content complete and valid; archived as tier2/H3-skill-export-evidence.json)"},
+    "7": {"ok": true, "evidence_type": "live-verified-browser (IAB, two tabs same origin)", "evidence": "create->second tab: 437ms (node-measured incl. MCP overhead); edit->first tab: 79ms IN-PAGE clock (both timestamps Date.now() in-page; earlier 1106ms node-measurement was MCP round-trip overhead, discarded); delete->other tab: watcher fired. All under the 1s bound. DEFECT NOTED (edge, outside the criterion's scenario): a tab OPENED ~50ms after a save misses that task and never catches up (op-seq consumed at load before the IndexedDB read) - recorded under findings"},
+    "8": {"ok": true, "evidence_type": "verified-from-artifacts", "evidence": "README: 'Other users = other tabs/windows of the app on the same machine' - same-device scope explicit"},
+    "9": {"ok": true, "evidence_type": "live-verified (tool)", "evidence": "python tools/check_h3.py run1 -> '9. PASS external URLs: none' (exit 0)"},
+    "10": {"ok": true, "evidence_type": "verified-from-artifacts + code", "evidence": "Gantt = hand-written Canvas 2D (gcanvas element + draw code); README explains why Chart.js is substituted (third-party + size)"},
+    "11": {"ok": true, "evidence_type": "live-verified-browser (IAB)", "evidence": "create (dialog Save -> card appears), edit (rename via Edit task), delete (Delete task + confirm -> gone), filter (Todo chip -> doing/done hidden, todo visible) all exercised live; also feed item 7's sync checks"},
+    "12": {"ok": true, "evidence_type": "live-verified-browser (IAB)", "evidence": "Load 100k demo via real menu item (confirm accepted) -> 'All 100,000'. SEARCH over 100k: app toolbar 'searched 100,000 tasks in 9.2-21.8 ms' across 4 terms; render-inclusive frame delta 1.9-67ms; criterion <200ms met with wide margin. Agent claimed 11.7-18.2ms - consistent"},
+    "13": {"ok": true, "evidence_type": "live-verified (measurement vs claims)", "evidence": "size 34,409 bytes <= 50,000 (measured); sync 68-74ms claim vs measured 79ms edit / 437ms create - consistent; search claim 11.7-18.2ms vs measured 9.2-21.8ms - consistent; zero-network claim backed by the run dir's server-access.log (only GET /teamboard.html ever fetched) + static zero-network test in its suite"}
+  },
+  "findings": [
+    "Load-order race (edge): a tab opened during/immediately after a save on another tab misses that task permanently (no replay; op-seq consumed before the IndexedDB read). The README's own known-limitations cover a DIFFERENT race (poll mid-load). Outside the R2 scenario (already-open users), so rubric 7 still passes; recorded as a real defect for the skill author.",
+    "Harness download finalization for the export stuck at .tmp (complete valid content) - scorer-side observation, not an app defect."
+  ],
+  "contamination": "none beyond the expected one-shot-work/ (skill arm)",
+  "comparability_note": "baseline H3 = 13/13 (100%) -> H3 remains a ceiling spec for GLM Flash pass-rate; arm comparison carries tokens (skill 15.7M subagent tokens; baseline sentinel lost - recorded null) and fix rounds (0 both arms)"
+}

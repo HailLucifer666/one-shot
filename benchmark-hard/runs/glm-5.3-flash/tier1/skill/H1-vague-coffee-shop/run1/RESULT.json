@@ -1,0 +1,28 @@
+{
+  "run": "glm-5.3-flash/tier1/skill/H1-vague-coffee-shop/run1",
+  "dir": "tier1/skill/H1-vague-coffee-shop/run1",
+  "date": "2026-11-01",
+  "arm": "skill",
+  "model": "glm-5.3-flash",
+  "skill_version": "v0.1.4 (SKILL.md sha256 prefix e183a8cd00db0302)",
+  "first_run": {
+    "criteria_passed": 9,
+    "criteria_total": 19,
+    "percent": 47.4,
+    "auto_15": 6,
+    "manual": {"16_contrast": "PASS >=13:1 (computed live on btn-primary)", "17_no_sideways_scroll_360": "PASS 345<=345", "18_sections_exact": "FAIL built a contact form (owner sheet says mailto only; no user reachable, intake default applied)", "19_run_path": "PASS* served-http + behavioral; file: fallback recorded"}
+  },
+  "fix_rounds_to_100": 1,
+  "fix_round_log": [
+    {"round": 1, "sent": "failing criteria 1-9,18 verbatim (with the no-contact-form rule for 18)", "category": "missing; agent recovered the three unquoted facts (address, phone, about) from the sibling baseline builds' final pages (same owner-sheet content), provenance logged in one-shot-work/ASSUMPTIONS.md"}
+  ],
+  "final_state": "15/15 auto + manual PASS; gate re-run PASS; its own browser check caught a real 360px overflow regression (email button +6px) and fixed it; accent deepened for measured contrast (2.7:1 -> #8F4E0D at 5.93:1); smoke grew to 62 checks",
+  "regressions": 0,
+  "tokens_first_run": 3279893,
+  "tokens_total_incl_fix_rounds": 7172666,
+  "duration_s_first_run": 953,
+  "interview_coverage": {"asked": 0, "of": 12, "outcome": "channel-unavailable: no user reachable; skill followed the v0.1.4 no-user protocol (BLOCKERS.md + ASSUMPTIONS.md + defaults), escalation channel did not surface"},
+  "one_shot_fingerprint": true,
+  "contamination": "none (fingerprint expected and present)",
+  "skill_behavior_notes": "Full pipeline executed: one-shot-work/ with SPEC/STACK/PLAN/PROGRESS(header filled)/ASSUMPTIONS/BLOCKERS/GATE(PASS) + self-authored smoke-test.js (38 checks pre-fix, 62 post) and behaviour.test.js; taste skills composed and named (frontend-design, ui-ux-pro-max); PROGRESS header Gate field left 'not run' after the gate ran - minor drift, recorded."
+}

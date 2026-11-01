@@ -1,0 +1,113 @@
+{
+  "1": {
+    "ok": true,
+    "evidence": "register 200/200, admin login 200, book->ref CW-65MDFZ, detail UTC 2027-03-15T14:00:00.000Z, cancel 200, list shows Cancelled=True"
+  },
+  "2": {
+    "ok": true,
+    "evidence": "Ben Sat 2027-03-20 haircut slots: 12:45 present=False (must be False), 12:30 present=True, total 15"
+  },
+  "3": {
+    "ok": true,
+    "evidence": "'any' booking -> 36 slots, ref CW-K72437, resolved stylist: 'Ana  \\n       Customer: Scorer A (a548334@battery.test) \\n       Starts:  Wed 2027-03-17, 9:00 AM  (salon time, America/Chicago) \\n       Ends: Wed 2027-03-17, 9:15 AM (salon time) \\n       Starts (UTC):  2027-03-17T14:00:00.000Z  \\n      \\n     \\n      Cancel this booking  \\n      Back to my bookings  \\n   \\n   \\n     \\n       Cutwell \u00b7 9:00\u201318:00 Monday to Saturday \u00b7 105 Elm Street \u00b7 All times shown in salon time (America/Chicago).'"
+  },
+  "4": {
+    "ok": true,
+    "evidence": "<2h refused=True, >60d refused=True, past refused=True; NOTE: exactly-2h (Sat 05:00) was refused - the app's boundary is exclusive, contradicting its own ASSUMPTIONS.md 'boundaries inclusive (exactly 2h bookable)' (criterion text only requires <2h refused)"
+  },
+  "5": {
+    "ok": true,
+    "evidence": "color 10:00 booked (ref CW-BR5YTK); UI after color: 11:15 hidden=True, 11:30 offered=True; 11:15 booking refused=True; 11:30 booking allowed (ref CW-AZG3N4)"
+  },
+  "6": {
+    "ok": true,
+    "evidence": "exactly-one in 5/5 rounds (Ben Tue 2027-03-16, per-round success counts [(1, [(200, 303), (200, 409)]), (1, [(200, 303), (200, 409)]), (1, [(200, 303), (200, 409)]), (1, [(200, 303), (200, 409)]), (1, [(200, 303), (200, 409)])])"
+  },
+  "7": {
+    "ok": true,
+    "evidence": "cancel 6d out 200; book 2h-ahead Ben (ref CW-BXV8PB); cancel inside 24h -> HTTP 409 with message: ' Cancel CW-BXV8PB \u00b7 Cutwell Skip to content Cutwell Book an appointment My bookings Scorer A (customer) Sign out Cancel '"
+  },
+  "8": {
+    "ok": true,
+    "evidence": "admin cancel w/o reason 400; with reason 200 (route /admin/bookings/:ref/cancel, discovered from the admin row action)"
+  },
+  "9": {
+    "ok": true,
+    "evidence": "reschedule Cleo Wed 11:00->14:00 keeps ref CW-28USYE; new UTC 2027-03-17T19:00:00.000Z (14:00 CDT = 19:00Z)"
+  },
+  "10": {
+    "ok": true,
+    "evidence": "Sunday slots=0, Cleo Tuesday slots=0, Cleo Wednesday earliest=11:00 (24 slots)"
+  },
+  "11": {
+    "ok": true,
+    "evidence": "Sat 9:00 local stored 2027-03-13T15:00:00.000Z; Mon 9:00 local stored 2027-03-15T14:00:00.000Z (AC1's booking)"
+  },
+  "12": {
+    "ok": true,
+    "evidence": "B reading A's booking -> 404 (refused/not-found page)"
+  },
+  "13": {
+    "ok": true,
+    "evidence": "stylist schedule page 200; stylist mutation attempt 403"
+  },
+  "14": {
+    "ok": true,
+    "evidence": "9-char password refused=True (HTTP 400); bcrypt prefix in data/cutwell.db=True"
+  },
+  "17": {
+    "ok": true,
+    "evidence": "17 outbox file(s): ['.gitkeep', 'CW-28USYE-confirmation.txt', 'CW-5V6TX5-confirmation.txt']"
+  },
+  "18": {
+    "ok": true,
+    "evidence": "page1 200 (13 rows<=20), page2 200; combined filters date+stylist+status -> 5 rows (0 = empty state rendered)"
+  },
+  "19": {
+    "ok": true,
+    "evidence": "CSV 200; header 'ref,start,end,service,stylist,customer_email,status'; dates seen ['13', '15', '16', '17', '19']"
+  },
+  "20": {
+    "ok": true,
+    "evidence": "admin audit 200 (before=True, after=True); customer blocked 403"
+  },
+  "21": {
+    "ok": true,
+    "evidence": "CUTWELL_NOW documented in README (env table + example); live effect proven by AC11 UTC values"
+  },
+  "26": {
+    "ok": true,
+    "evidence": "empty bookings message=True; invalid date handled without crash=True (HTTP 200, form re-rendered)"
+  },
+  "25": {
+    "ok": true,
+    "evidence": ".env.example=True, .env committed=False, secret hits=none; clean-checkout npm ci && npm test verified by the run's own log (agent-verified-with-note)"
+  },
+  "27": {
+    "ok": true,
+    "evidence": "README feature audit: unrequested features found: none"
+  },
+  "15": {
+    "ok": true,
+    "evidence": "6 wrong logins -> [401, 401, 401, 401, 401, 429]; 6th blocked=True"
+  },
+  "16": {
+    "ok": true,
+    "evidence": "13 refs sampled from admin list, 0 duplicates (full 200-booking check covered by the suite: 61 tests incl. 200-booking uniqueness)"
+  },
+  "24": {
+    "ok": true,
+    "evidence": "npm test -> 61 pass / 0 fail (95.2s), one documented command; README's '59' is stale - agent's 61 is correct",
+    "evidence_type": "live-verified"
+  },
+  "22": {
+    "ok": true,
+    "evidence": "BROWSER (IAB, live): Tab moves focus email->password->'Sign in' button in DOM order; newly-focused input shows a VISIBLE 3px solid rgb(15,118,110) outline (:focus-visible, styles.css line 54) ; /book at 360px has ZERO unlabeled inputs (label[for]/wrapped/aria all checked programmatically); register/login fields labeled; skip-link present with its own focus style. LIMITATION RECORDED: a synthetic Enter keypress on the focused submit button did not fire the native form submit in this harness (untrusted event); native HTML button-Enter semantics + the skip-link + focus ring are the keyboard-path evidence. Keyboard-driven fill was used for every form interaction in these probes.",
+    "evidence_type": "live-verified-browser"
+  },
+  "23": {
+    "ok": true,
+    "evidence": "BROWSER (IAB, live): documentElement scrollWidth == clientWidth (no sideways scroll) at 1280px (/login) and at 360px (/login, /register, /book) after setViewportSize.",
+    "evidence_type": "live-verified-browser"
+  }
+}

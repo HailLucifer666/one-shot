@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taskbox</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 2rem auto; padding: 0 1rem; }
+    li { display: flex; gap: .5rem; align-items: center; padding: .25rem 0; }
+    li.done span { text-decoration: line-through; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Taskbox</h1>
+  <form id="add"><input id="title" placeholder="New task" required><button>Add</button></form>
+  <ul id="list"></ul>
+  <script>
+    async function load() {
+      const tasks = await (await fetch("/api/tasks")).json();
+      const ul = document.getElementById("list");
+      ul.innerHTML = "";
+      for (const t of tasks) {
+        const li = document.createElement("li");
+        if (t.done) li.className = "done";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.checked = t.done;
+        cb.onchange = async () => { await fetch("/api/tasks/" + t.id, { method: "PATCH", body: JSON.stringify({ done: cb.checked }) }); load(); };
+        const span = document.createElement("span"); span.textContent = t.title;
+        const del = document.createElement("button"); del.textContent = "Delete";
+        del.onclick = async () => { await fetch("/api/tasks/" + t.id, { method: "DELETE" }); load(); };
+        li.append(cb, span, del); ul.append(li);
+      }
+    }
+    document.getElementById("add").onsubmit = async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("title");
+      await fetch("/api/tasks", { method: "POST", body: JSON.stringify({ title: input.value }) });
+      input.value = ""; load();
+    };
+    load();
+  </script>
+</body>
+</html>

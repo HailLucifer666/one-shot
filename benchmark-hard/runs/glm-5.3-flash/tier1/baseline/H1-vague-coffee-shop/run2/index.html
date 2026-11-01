@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<!--
+  Ember & Oak — coffee shop one-page site.
+
+  STILL PLACEHOLDER (replace before launch):
+    - Social links in the footer (href="#")
+    - The contact form is a front-end demo: connect it to a form service or inbox.
+  Hours live in TWO places: the table in #hours-location AND the HOURS array in
+  js/main.js — always edit them together.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ember & Oak · Coffee & Bakes — Riverton</title>
+  <meta name="description" content="Ember & Oak is a neighbourhood coffee bar in Riverton pouring single-origin espresso and baking fresh pastries every morning. 14 Lantern Lane · open daily.">
+  <meta name="theme-color" content="#1E1612">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23D9822B'/%3E%3Ctext x='50' y='68' font-size='54' text-anchor='middle' fill='%23FAF5EE' font-family='Georgia,serif'%3EE%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#hero" aria-label="Ember and Oak, back to top">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M9 14h11v3.2c0 3.2-2.3 5.3-5.5 5.3S9 20.4 9 17.2Z" fill="currentColor"/>
+          <path d="M20 15.2c2.6 0 2.6 3.8 0 3.8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M12.5 11c-1-1.4 1-2 0-3.4M16.5 11c-1-1.4 1-2 0-3.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span class="brand-name">Ember & Oak</span>
+      </a>
+
+      <nav id="siteNav" class="site-nav" aria-label="Main">
+        <ul>
+          <li><a href="#menu">Menu</a></li>
+          <li><a href="#about">About</a></li>
+          <li><a href="#hours-location">Hours & Location</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-right">
+        <p class="open-badge js-open-badge" role="status">Checking hours…</p>
+        <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="siteNav">
+          <span class="nav-toggle-box" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="visually-hidden">Menu</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ 1. HERO ============ -->
+    <section class="hero" id="hero">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">Coffee · Bakes · Community — Riverton</p>
+          <h1>Slow mornings,<br><em>honest</em> coffee.</h1>
+          <p class="lede">
+            Ember & Oak is a small neighbourhood coffee bar pouring single-origin
+            espresso and baking everything in-house, every morning. Five minutes or
+            five hours — nobody will rush you.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-solid" href="#menu">See the menu</a>
+            <a class="btn btn-ghost" href="#hours-location">Plan a visit</a>
+          </div>
+          <p class="open-badge hero-badge js-open-badge" role="status">Checking hours…</p>
+        </div>
+
+        <div class="hero-art" aria-hidden="true">
+          <svg class="cup" viewBox="0 0 240 240" focusable="false">
+            <circle class="c-ring" cx="120" cy="120" r="112" fill="none" stroke-width="2.5"/>
+            <circle class="c-bg" cx="120" cy="120" r="100"/>
+            <ellipse class="c-ink" cx="120" cy="173" rx="56" ry="9"/>
+            <path class="c-ink" d="M163 128c23 0 23 30 0 30" fill="none" stroke-width="7" stroke-linecap="round"/>
+            <path class="c-body" d="M78 119h84v19c0 20-18 32-42 32s-42-12-42-32Z"/>
+            <line class="c-ink" x1="78" y1="119" x2="162" y2="119" stroke-width="6" stroke-linecap="round"/>
+            <path class="steam steam-1" d="M104 102c-6-8 6-13 0-24" fill="none" stroke-width="5" stroke-linecap="round"/>
+            <path class="steam steam-2" d="M120 98c-6-9 6-14 0-26" fill="none" stroke-width="5" stroke-linecap="round"/>
+            <path class="steam steam-3" d="M136 102c-6-8 6-13 0-24" fill="none" stroke-width="5" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- Decorative ticker (not a content section) -->
+    <div class="ticker" aria-hidden="true">
+      <ul class="ticker-track">
+        <li>Single-origin espresso</li>
+        <li>Baked fresh at 6 am</li>
+        <li>Oat & almond at no extra cost</li>
+        <li>Beans by the bag</li>
+        <li>Dog-friendly patio</li>
+        <li>Sockets by every window seat</li>
+        <li>Single-origin espresso</li>
+        <li>Baked fresh at 6 am</li>
+        <li>Oat & almond at no extra cost</li>
+        <li>Beans by the bag</li>
+        <li>Dog-friendly patio</li>
+        <li>Sockets by every window seat</li>
+      </ul>
+    </div>
+
+    <!-- ============ 2. MENU ============ -->
+    <section class="section section-alt" id="menu">
+      <div class="section-inner">
+        <div class="section-head reveal">
+          <p class="eyebrow">The menu</p>
+          <h2>Order at the counter.</h2>
+          <p class="menu-note">
+            Milk alternatives and decaf at no extra charge · everything baked in-house
+            each morning · ask about today's special.
+          </p>
+        </div>
+
+        <div class="menu-grid" id="menuPanel">
+          <article class="menu-item">
+            <div class="mi-line"><h3 class="mi-name">Espresso</h3><span class="dots"></span><span class="price">$3.00</span></div>
+            <p class="mi-note">Our house blend, short and syrupy.</p>
+          </article>
+          <article class="menu-item">
+            <div class="mi-line"><h3 class="mi-name">Flat White</h3><span class="dots"></span><span class="price">$4.25</span></div>
+            <p class="mi-note">Double ristretto, silky microfoam.</p>
+          </article>
+          <article class="menu-item">
+            <div class="mi-line"><h3 class="mi-name">Cold Brew</h3><span class="dots"></span><span class="price">$4.75</span></div>
+            <p class="mi-note">Steeped 18 hours, served over ice.</p>
+          </article>
+          <article class="menu-item">
+            <div class="mi-line"><h3 class="mi-name">Oat Milk Latte</h3><span class="dots"></span><span class="price">$5.00</span></div>
+            <p class="mi-note">Double shot with house-made oat milk.</p>
+          </article>
+          <article class="menu-item">
+            <div class="mi-line"><h3 class="mi-name">Almond Croissant</h3><span class="dots"></span><span class="price">$3.75</span></div>
+            <p class="mi-note">Twice baked, frangipane heart.</p>
+          </article>
+          <article class="menu-item">
+            <div class="mi-line"><h3 class="mi-name">Cardamom Bun</h3><span class="dots"></span><span class="price">$3.50</span></div>
+            <p class="mi-note">Sticky, spiced, baked every morning.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 3. ABOUT ============ -->
+    <section class="section" id="about">
+      <div class="section-inner">
+        <div class="section-head reveal">
+          <p class="eyebrow">About Ember & Oak</p>
+          <h2>A corner shop with a slow heart.</h2>
+        </div>
+        <div class="story-copy reveal">
+          <p>Ember & Oak opened in 2019 in a former hardware store. We roast in small batches every Tuesday. Everything in the case is baked before sunrise.</p>
+          <dl class="stat-row">
+            <div class="stat">
+              <dt>Single origins on rotation</dt>
+              <dd>4</dd>
+            </div>
+            <div class="stat">
+              <dt>Days to laminate a croissant</dt>
+              <dd>3</dd>
+            </div>
+            <div class="stat">
+              <dt>First pour of the day</dt>
+              <dd>7 am</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 4. HOURS & LOCATION ============ -->
+    <section class="section section-alt" id="hours-location">
+      <div class="section-inner">
+        <div class="section-head reveal">
+          <p class="eyebrow">Find us</p>
+          <h2>Hours & Location</h2>
+        </div>
+        <div class="visit-grid">
+          <div class="card reveal">
+            <h3>Address</h3>
+            <address>
+              14 Lantern Lane, Riverton
+            </address>
+            <p class="card-lines">
+              <a href="tel:+15550142">555-0142</a><br>
+              <a href="mailto:hello@emberandoak.example">hello@emberandoak.example</a>
+            </p>
+            <p class="card-lines">Street parking nearby · bike racks out front · step-free entrance.</p>
+            <a class="btn btn-solid" href="https://www.google.com/maps/search/?api=1&amp;query=14+Lantern+Lane+Riverton" target="_blank" rel="noopener">Get directions</a>
+          </div>
+          <div class="card reveal">
+            <h3>Hours</h3>
+            <p class="open-badge card-badge js-open-badge" role="status">Checking hours…</p>
+            <table class="hours-table">
+              <tbody>
+                <tr><th scope="row">Monday – Friday</th><td>7:00 am – 6:00 pm</td></tr>
+                <tr><th scope="row">Saturday</th><td>8:00 am – 4:00 pm</td></tr>
+                <tr><th scope="row">Sunday</th><td>8:00 am – 4:00 pm</td></tr>
+              </tbody>
+            </table>
+            <p class="card-lines">Kitchen closes 30 minutes before we do.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 5. CONTACT ============ -->
+    <section class="section" id="contact">
+      <div class="section-inner">
+        <div class="contact-grid">
+          <div class="section-head reveal">
+            <p class="eyebrow">Say hello</p>
+            <h2>Questions, catering, big tables?</h2>
+            <p class="menu-note">
+              Booking the corner for a book club, ordering a cake, or just want to
+              tell us our cardamom buns changed your life? Drop us a line at
+              <a href="mailto:hello@emberandoak.example">hello@emberandoak.example</a>
+              or use the form.
+            </p>
+          </div>
+          <form id="contactForm" class="contact-form reveal" novalidate>
+            <div class="field">
+              <label for="cf-name">Your name</label>
+              <input id="cf-name" name="name" type="text" autocomplete="name" required>
+            </div>
+            <div class="field">
+              <label for="cf-email">Email</label>
+              <input id="cf-email" name="email" type="email" autocomplete="email" required>
+            </div>
+            <div class="field">
+              <label for="cf-message">Message</label>
+              <textarea id="cf-message" name="message" rows="5" required></textarea>
+            </div>
+            <button class="btn btn-solid" type="submit">Send message</button>
+            <p class="form-demo-note">This form is a front-end demo — connect it to your inbox or a form service before launch.</p>
+          </form>
+          <div id="formSuccess" class="form-success" role="status" hidden>
+            <h3>Thanks, <span id="successName">friend</span>.</h3>
+            <p>Your message is ready — but this site is a preview, so nothing was actually sent. Once the form is connected to an inbox, notes like this will land with you directly.</p>
+            <button class="btn btn-ghost" id="formReset" type="button">Write another</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="brand-name">Ember & Oak</span>
+        <p>Slow mornings, honest coffee.</p>
+        <ul class="social">
+          <li><a href="#" aria-label="Instagram (add your link)">Instagram</a></li>
+          <li><a href="#" aria-label="Facebook (add your link)">Facebook</a></li>
+        </ul>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        <a href="#menu">Menu</a>
+        <a href="#about">About</a>
+        <a href="#hours-location">Hours & Location</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <div class="footer-meta">
+        <p>14 Lantern Lane, Riverton · 555-0142</p>
+        <p>© <span id="year">2026</span> Ember & Oak. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js" defer></script>
+</body>
+</html>

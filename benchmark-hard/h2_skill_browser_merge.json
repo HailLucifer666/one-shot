@@ -1,0 +1,12 @@
+{
+  "22": {
+    "ok": true,
+    "evidence": "BROWSER (IAB, live): Tab moves focus email->password->'Sign in' button in DOM order; newly-focused input shows a VISIBLE 3px solid rgb(15,118,110) outline (:focus-visible, styles.css line 54) ; /book at 360px has ZERO unlabeled inputs (label[for]/wrapped/aria all checked programmatically); register/login fields labeled; skip-link present with its own focus style. LIMITATION RECORDED: a synthetic Enter keypress on the focused submit button did not fire the native form submit in this harness (untrusted event); native HTML button-Enter semantics + the skip-link + focus ring are the keyboard-path evidence. Keyboard-driven fill was used for every form interaction in these probes.",
+    "evidence_type": "live-verified-browser"
+  },
+  "23": {
+    "ok": true,
+    "evidence": "BROWSER (IAB, live): documentElement scrollWidth == clientWidth (no sideways scroll) at 1280px (/login) and at 360px (/login, /register, /book) after setViewportSize.",
+    "evidence_type": "live-verified-browser"
+  }
+}
