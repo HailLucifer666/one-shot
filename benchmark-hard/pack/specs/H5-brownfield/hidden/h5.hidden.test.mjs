@@ -71,6 +71,11 @@ test("C2: an unknown status is 400", async () => {
   assert.equal((await fetch(`${base}/api/tasks?status=bogus`)).status, 400);
 });
 
+test("C2: unknown query parameters are 400", async () => {
+  assert.equal((await fetch(`${base}/api/tasks?foo=bar`)).status, 400);
+  assert.equal((await fetch(`${base}/api/tasks?status=open&foo=1`)).status, 400);
+});
+
 test("C3: overdue=true returns only open tasks due before today", async () => {
   const overdueOpen = await make({ due: "2000-01-01" });
   const overdueDone = await make({ due: "2000-01-01" });
