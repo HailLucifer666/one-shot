@@ -109,6 +109,14 @@ def summary(runs_dir=None):
         data = json.loads(res.read_text())
         if data["criteria_passed"] is None:
             continue
+        # 2026-11-01 (audit B9): the sentinel gate lived only in the throwaway scoring
+        # pre-pass; this summary happily counted a scored-but-unsentineled run (probed
+        # with a fake row that had no run-complete.json anywhere). Gate here too.
+        sentinel = res.parent / "run-complete.json"
+        if not sentinel.is_file():
+            continue
+        if json.loads(sentinel.read_text()).get("exit") != "completed":
+            continue
         rows.setdefault((model, mode), []).append(data)
     print("| Model | Mode | Runs | First-run pass rate | Mean criteria | Median follow-ups | Mean tokens |")
     print("| --- | --- | --- | --- | --- | --- | --- |")
