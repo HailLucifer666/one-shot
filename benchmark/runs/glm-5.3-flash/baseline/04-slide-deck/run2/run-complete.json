@@ -1,0 +1,9 @@
+{
+  "run": "glm-5.3-flash/baseline/04-slide-deck/run2",
+  "ended": "2026-10-31",
+  "exit": "completed",
+  "design": "ambient (no skill bar)",
+  "subagent_tokens": 1748253,
+  "duration_s": 968,
+  "one_shot_fingerprint": false
+}

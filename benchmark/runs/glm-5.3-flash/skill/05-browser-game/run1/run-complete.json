@@ -1,0 +1,9 @@
+{
+  "run": "glm-5.3-flash/skill/05-browser-game/run1",
+  "ended": "2026-10-31",
+  "exit": "completed",
+  "design": "skill (/one-shot invoked)",
+  "subagent_tokens": 3247589,
+  "duration_s": 1318,
+  "one_shot_fingerprint": true
+}

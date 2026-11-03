@@ -1,0 +1,9 @@
+{
+  "run": "glm-5.3-flash/skill/02-crud-app-auth/run2",
+  "ended": "2026-10-31",
+  "exit": "completed",
+  "design": "skill (/one-shot invoked)",
+  "subagent_tokens": 3366259,
+  "duration_s": 1234,
+  "one_shot_fingerprint": true
+}

@@ -42,7 +42,7 @@ Rigor adapts to the model: LEAN for strong models, STANDARD by default, STRICT f
 
 ## Results
 
-Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: ambient-labeled two-arm benchmark — both arms keep the full ambient skill catalog; `/one-shot` is added only to the skill arm. 5 specs x 2 repeats per arm, fresh session per run, verbatim prompts, one prompt only. Every number below traces to a sentinel-gated `RESULT.json` under `benchmark/runs` protocol (runs stored in `_runs-zcode`, method in each file). Runs scoring below 10/10 get follow-up prompts actually sent and counted. The skill arm ran version 0.1 (sha256 prefix `d17a33667c28c421`); the 0.1.1, 0.1.2 and 0.1.3 fixes each came from external tests after this measurement and are unmeasured on this benchmark.
+Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: ambient-labeled two-arm benchmark — both arms keep the full ambient skill catalog; `/one-shot` is added only to the skill arm. 5 specs x 2 repeats per arm, fresh session per run, verbatim prompts, one prompt only. Every number below traces to a sentinel-gated `RESULT.json` vendored under `benchmark/runs` (full run outputs retained in the project's `_runs-zcode` workspace archive; scoring method recorded in each record). Runs scoring below 10/10 get follow-up prompts actually sent and counted. The skill arm ran version 0.1 (sha256 prefix `d17a33667c28c421`); the 0.1.1, 0.1.2 and 0.1.3 fixes each came from external tests after this measurement and are unmeasured on this benchmark.
 
 | Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
 | --- | --- | --- | --- | --- | --- | --- |
