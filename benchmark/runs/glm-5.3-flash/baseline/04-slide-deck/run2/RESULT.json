@@ -1,0 +1,14 @@
+{
+  "criteria_passed": 10,
+  "follow_up_prompts_needed": 0,
+  "tokens_used": 1748253,
+  "notes": "all 10 criteria pass",
+  "harness": "zcode",
+  "model": "glm-5.3-flash",
+  "mode": "baseline",
+  "spec": "04-slide-deck",
+  "design": "ambient (no skill bar)",
+  "one_shot_fingerprint": false,
+  "skill_sha": "d17a33667c28c421",
+  "scoring_method": "static criteria from checks.py; MANUAL criteria judged from the run's recorded browser-verification evidence; riskiest claims (deck notes, game persistence, word caps) independently spot-verified by the scorer in a live browser"
+}

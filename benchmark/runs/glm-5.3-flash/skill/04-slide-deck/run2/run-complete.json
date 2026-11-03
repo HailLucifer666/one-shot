@@ -1,0 +1,9 @@
+{
+  "run": "glm-5.3-flash/skill/04-slide-deck/run2",
+  "ended": "2026-10-31",
+  "exit": "completed",
+  "design": "skill (/one-shot invoked)",
+  "subagent_tokens": 758349,
+  "duration_s": 556,
+  "one_shot_fingerprint": true
+}

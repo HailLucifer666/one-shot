@@ -1,0 +1,14 @@
+{
+  "criteria_passed": 10,
+  "follow_up_prompts_needed": 0,
+  "tokens_used": 3556688,
+  "notes": "all 10 criteria pass",
+  "harness": "zcode",
+  "model": "glm-5.3-flash",
+  "mode": "skill",
+  "spec": "03-dashboard",
+  "design": "skill (/one-shot invoked)",
+  "one_shot_fingerprint": true,
+  "skill_sha": "d17a33667c28c421",
+  "scoring_method": "static criteria from checks.py; MANUAL criteria judged from the run's recorded browser-verification evidence; riskiest claims (deck notes, game persistence, word caps) independently spot-verified by the scorer in a live browser"
+}
