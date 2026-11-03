@@ -1,0 +1,9 @@
+{
+  "run": "glm-5.3-flash/baseline/02-crud-app-auth/run1",
+  "ended": "2026-10-31",
+  "exit": "completed",
+  "design": "ambient (no skill bar)",
+  "subagent_tokens": 1844935,
+  "duration_s": 748,
+  "one_shot_fingerprint": false
+}
