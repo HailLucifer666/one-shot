@@ -7,3 +7,6 @@ benchmark/runs/
 .env
 __pycache__/
 one-shot-work/
+
+# /brag launch-video output — never part of the published repo
+brag-output/
