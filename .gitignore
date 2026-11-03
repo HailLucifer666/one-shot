@@ -1,3 +1,7 @@
+# Bulky run outputs stay out of git. Exception: the 20 vendored sentinel-gated
+# scoring records (RESULT.json + run-complete.json under glm-5.3-flash/) are
+# force-added and tracked on purpose (audit item B12) so the published table
+# is reproducible from the repo alone. New run dirs remain ignored.
 benchmark/runs/
 .DS_Store
 .env

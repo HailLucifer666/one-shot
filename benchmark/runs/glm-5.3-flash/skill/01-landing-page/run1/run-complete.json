@@ -1,0 +1,9 @@
+{
+  "run": "glm-5.3-flash/skill/01-landing-page/run1",
+  "ended": "2026-10-31",
+  "exit": "completed",
+  "design": "skill (/one-shot invoked)",
+  "subagent_tokens": 1980051,
+  "duration_s": 941,
+  "one_shot_fingerprint": true
+}
