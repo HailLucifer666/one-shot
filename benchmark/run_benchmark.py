@@ -35,8 +35,8 @@ def setting(name):
 
 
 def gateway_url():
-    """Respan gateway chat completions. RESPAN_BASE_URL only changes this for Respan Enterprise."""
-    return (setting("RESPAN_BASE_URL") or "https://api.respan.ai/api").rstrip("/") + "/chat/completions"
+    """Respan hosted gateway chat completions."""
+    return "https://api.respan.ai/api/chat/completions"
 
 
 def init(model, mode, repeats):
