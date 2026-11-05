@@ -156,6 +156,14 @@ class TestMarkComplete(SummaryFixture):
         self.assertIn("not scored yet", err)
         self.assertFalse((d / "run-complete.json").exists())
 
+    def test_spec_number_resolves_to_stem(self):
+        # probed live 2026-11-05: `complete --spec 01` built .../01/run1 and found
+        # nothing - run dirs are keyed by the spec file stem, same as run()
+        self.make_run("m", "skill", "01-landing-page", 1, result=SCORED)
+        path, err = run_benchmark.mark_complete("m", "skill", "01", 1, self.tmp.name)
+        self.assertIsNone(err)
+        self.assertTrue(Path(path).is_file())
+
     def test_refuses_missing_run(self):
         path, err = run_benchmark.mark_complete("m", "skill", "01-landing-page", 9,
                                                 self.tmp.name)
