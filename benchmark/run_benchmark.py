@@ -41,16 +41,17 @@ def gateway_url():
     return "https://api.respan.ai/api/chat/completions"
 
 
-def init(model, mode, repeats):
+def init(model, mode, repeats, runs_dir=None):
+    root = Path(runs_dir) if runs_dir else RUNS
     for spec in sorted((ROOT / "specs").glob("*.md")):
         for n in range(1, repeats + 1):
-            d = RUNS / model / mode / spec.stem / f"run{n}"
+            d = root / model / mode / spec.stem / f"run{n}"
             d.mkdir(parents=True, exist_ok=True)
             (d / "SPEC.md").write_text(spec.read_text())
             res = d / "RESULT.json"
             if not res.exists():
                 res.write_text(json.dumps(TEMPLATE, indent=2))
-    print(f"Created run folders under {RUNS / model / mode}")
+    print(f"Created run folders under {root / model / mode}")
 
 
 def call_gateway(model, prompt, key):
@@ -205,6 +206,8 @@ if __name__ == "__main__":
     a.add_argument("--model", required=True)
     a.add_argument("--mode", choices=["baseline", "skill"], required=True)
     a.add_argument("--repeats", type=int, default=2)
+    a.add_argument("--runs-dir", default=None,
+                   help="alternate run tree - keeps a new battery clear of the vendored records")
     r = sub.add_parser("run")
     r.add_argument("--model", required=True)
     r.add_argument("--mode", choices=["baseline", "skill"], required=True)
@@ -219,7 +222,7 @@ if __name__ == "__main__":
     c.add_argument("--runs-dir", default=None)
     args = p.parse_args()
     if args.cmd == "init":
-        init(args.model, args.mode, args.repeats)
+        init(args.model, args.mode, args.repeats, args.runs_dir)
     elif args.cmd == "run":
         sys.exit(run(args.model, args.mode, args.spec))
     elif args.cmd == "complete":

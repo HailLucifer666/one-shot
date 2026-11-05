@@ -163,5 +163,33 @@ class TestMarkComplete(SummaryFixture):
         self.assertIn("no RESULT.json", err)
 
 
+class TestInit(unittest.TestCase):
+    def test_scaffolds_into_alternate_runs_dir(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            run_benchmark.init("m", "skill", 2, tmp.name)
+        root = Path(tmp.name) / "m" / "skill"
+        specs = sorted(p.name for p in root.iterdir())
+        self.assertEqual(len(specs), 5, specs)
+        first = root / "01-landing-page" / "run1"
+        self.assertTrue((first / "RESULT.json").is_file())
+        self.assertTrue((first / "SPEC.md").is_file())
+        data = json.loads((first / "RESULT.json").read_text())
+        self.assertIsNone(data["criteria_passed"])
+
+    def test_init_never_overwrites_a_scored_record(self):
+        # the vendored-record guarantee: re-init on a scored tree must not reset it
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        d = Path(tmp.name) / "m" / "skill" / "01-landing-page" / "run1"
+        d.mkdir(parents=True)
+        (d / "RESULT.json").write_text(json.dumps({"criteria_passed": 9}))
+        with contextlib.redirect_stdout(io.StringIO()):
+            run_benchmark.init("m", "skill", 2, tmp.name)
+        self.assertEqual(json.loads((d / "RESULT.json").read_text())["criteria_passed"], 9)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
