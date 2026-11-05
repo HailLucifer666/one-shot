@@ -174,11 +174,25 @@ def spec01(root):
     else:
         out(4, "MANUAL", "button and anchor present; confirm the #demo form has labeled name and email inputs")
 
-    # 7: no lorem ipsum (static scan of all scanned text files)
-    if re.search(r"lorem ipsum", blob, re.I):
-        out(7, "FAIL", "'lorem ipsum' found in project files")
+    # 7: no lorem ipsum. 2026-11-06, probed live in the audit battery: the skill arm
+    # writes self-check scripts whose comments name the anti-pattern they grep for,
+    # so scanning every project file made this check FAIL its own verification -
+    # a structural bias against the arm that writes checkers. Conclusive evidence
+    # is lorem in the delivered page's visible text; hits elsewhere are MANUAL.
+    page_hits = [p for p in iter_files(root, {".html", ".htm"})
+                 if re.search(r"lorem ipsum", visible_text(read(p)), re.I)]
+    if page_hits:
+        out(7, "FAIL", "'lorem ipsum' in page text: " + ", ".join(p.name for p in page_hits))
     else:
-        out(7, "PASS", "no 'lorem ipsum' in static scan of project files")
+        other = [p for p in iter_files(root, SCAN_EXTS)
+                 if re.search(r"lorem ipsum", read(p), re.I)]
+        if other:
+            names = ", ".join(p.name for p in other[:3])
+            out(7, "MANUAL", f"page text is clean, but 'lorem ipsum' appears in non-page "
+                             f"file(s) ({names}) - usually a checker naming the anti-pattern; "
+                             "confirm the copy itself contains none")
+        else:
+            out(7, "PASS", "no 'lorem ipsum' in the page's visible text or project files")
 
     # 8: title, meta description, favicon
     title_ok = re.search(r"<title>[^<]+</title>", stripped, re.I) is not None

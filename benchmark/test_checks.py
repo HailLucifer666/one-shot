@@ -176,7 +176,19 @@ class Spec01(FixtureTest):
 
     def test_lorem_fails(self):
         res = self.run_checks("01", {"index.html": "<p>lorem ipsum dolor</p>"})
-        self.assertVerdict(res, 7, "FAIL", "'lorem ipsum' found")
+        self.assertVerdict(res, 7, "FAIL", "in page text")
+
+    def test_lorem_in_comment_only_is_manual(self):
+        # commented-out placeholder text is not visible content: not conclusive
+        res = self.run_checks("01", {"index.html": "<!-- lorem ipsum -->"})
+        self.assertVerdict(res, 7, "MANUAL", "non-page file(s)")
+
+    def test_lorem_only_in_a_checker_script_is_manual(self):
+        # 2026-11-06 battery probe: the skill arm's self-check scripts name the
+        # anti-pattern they grep for; that must not FAIL the page
+        res = self.run_checks("01", {"index.html": "<p>Fresh office copy.</p>",
+                                     "scripts/check.js": "// AC 7: no lorem ipsum\n"})
+        self.assertVerdict(res, 7, "MANUAL", "check.js")
 
     def test_missing_favicon_fails(self):
         res = self.run_checks("01", {"index.html": "<title>t</title>"
@@ -232,13 +244,15 @@ class Spec01(FixtureTest):
         })
         self.assertVerdict(res, 4, "MANUAL")
 
-    def test_lorem_under_root_named_build_fails(self):
-        # FIXED 2026-11-05: iter_files compares dirs below the root only
+    def test_lorem_under_root_named_build_is_seen(self):
+        # FIXED 2026-11-05: iter_files compares dirs below the root only. The lorem
+        # sits in a script, so the page is clean and the verdict is MANUAL with the
+        # location named - but a whole-root skip would print a vacuous PASS instead.
         res = self.run_checks("01", {
             "index.html": "<h1>x</h1>",
             "app.js": "lorem ipsum",
         }, sub="build")
-        self.assertVerdict(res, 7, "FAIL", "'lorem ipsum' found")
+        self.assertVerdict(res, 7, "MANUAL", "app.js")
 
     def test_spa_title_missing_fails_documents_sharp_edge(self):
         # OPEN QUESTION for the audit: a JS-set document.title makes this FAIL
