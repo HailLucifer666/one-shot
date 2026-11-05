@@ -115,7 +115,10 @@ def mark_complete(model, mode, spec_id, run_n, runs_dir=None):
     Returns (path, None) on success or (None, reason).
     """
     root = Path(runs_dir) if runs_dir else RUNS
-    d = root / model / mode / spec_id / f"run{run_n}"
+    # resolve "01" to the spec stem the run dirs are keyed by, same as run() does
+    stem = next(iter(sorted((ROOT / "specs").glob(f"{spec_id}-*.md"))), None)
+    spec_dir = stem.stem if stem else spec_id
+    d = root / model / mode / spec_dir / f"run{run_n}"
     res = d / "RESULT.json"
     if not res.is_file():
         return None, f"no RESULT.json in {d} - nothing to mark complete"
