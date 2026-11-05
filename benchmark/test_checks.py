@@ -14,8 +14,40 @@ behavior the code does not have yet; they carry @unittest.expectedFailure
 and turn into ordinary green guards when the fix removes the marker.
 
 MUTATION PROBES (a guard is only trusted after breaking it - record date,
-the exact mutation, and which test went red):
-  (appended by the 2026-11-05 audit, Phase 2)
+the exact mutation, and which test went red). Driver: _probe/mutation_driver.py
+outside the repo; it applies each mutation, verifies it applied, runs this
+suite, and restores.
+
+Pass 1, 2026-11-05, against pre-fix checks.py (all caught, all green before
+any fix, each by exactly the tests listed):
+  M1 h1 count ==1 loosened to >=1            -> test_two_h1_fails
+  M2 lorem pattern broken                    -> test_lorem_fails (+ later also
+                                                test_lorem_under_root_named_build_fails)
+  M3 sk- token pattern dropped               -> test_secret_literal_fails +
+                                                test_dummy_key_in_test_..._sharp_edge
+  M4 test-file regex narrowed                -> test_mjs_tests_counted
+  M5 empty-aside MANUAL branch disabled      -> test_html_empty_asides_goes_manual
+  M6 best-score key words broken             -> test_best_score_never_autopasses
+  M7 KPI revenue sum swapped to units        -> test_kpi_manual_with_computed_sums +
+                                                test_formatted_numbers_go_manual
+  M8 word cap 40->400 (both deck branches)   -> test_pptx_overlong_slide_fails +
+                                                test_html_deck_word_cap_fails
+  M9 notes-must-match-slides disabled        -> test_pptx_missing_notes_fails
+  M10 24pt floor lowered to 12pt             -> test_pptx_small_text_fails
+Constant reds during pass 1 (both were the spec04 UnboundLocalError on a
+project with no deck file - FIXED 2026-11-05 by moving the notes scan inside
+the html-present branch): test_no_deck_at_all_goes_manual,
+test_b10_contract_pptx_and_html_and_empty.
+
+Pass 2, 2026-11-05, against the FIXED file - attacking the guards this audit
+added (16/16 caught; never trust a new guard until breaking it goes red):
+  M3b sk- pattern dropped (post-fix text)    -> test_secret_literal_fails + dummy-key test
+  M11 JS-capable h1 branch disabled          -> test_spa_h1_is_manual_not_fail
+  M12 other-language detection disabled      -> test_go_stack_tests_are_manual_not_fail
+  M13 committed-.env check disabled          -> test_committed_env_not_ignored_fails
+  M14 yaml/yml dropped from SCAN_EXTS        -> test_secret_in_yaml_fails
+  M15 below-root-only skip reverted          -> test_lorem_under_root_named_build_fails
+  M16 CTA-in-script MANUAL branch disabled   -> test_spa_button_is_manual_not_fail
 """
 import contextlib
 import importlib.util
@@ -179,24 +211,29 @@ class Spec01(FixtureTest):
         res = self.run_checks("01", files)
         self.assertVerdict(res, 7, "PASS", "no 'lorem ipsum'")
 
-    @unittest.expectedFailure  # KNOWN-DEFECT: JS-rendered h1 is not a conclusive absence
     def test_spa_h1_is_manual_not_fail(self):
+        # FIXED 2026-11-05: JS-capable pages go MANUAL; static pages still FAIL
+        # (see test_static_page_without_h1_fails).
         res = self.run_checks("01", {
             "index.html": '<div id="root"></div><script src="app.js"></script>',
             "app.js": "document.body.innerHTML = '<h1>FocusDesk</h1>';",
         })
         self.assertVerdict(res, 2, "MANUAL")
 
-    @unittest.expectedFailure  # KNOWN-DEFECT: button text may be rendered by JS
+    def test_static_page_without_h1_fails(self):
+        res = self.run_checks("01", {"index.html": "<p>plain static page</p>"})
+        self.assertVerdict(res, 2, "FAIL", "0 h1 tags")
+
     def test_spa_button_is_manual_not_fail(self):
+        # FIXED 2026-11-05: CTA text present in script but not markup -> MANUAL
         res = self.run_checks("01", {
             "index.html": '<div id="root"></div><script src="app.js"></script>',
             "app.js": "el.innerHTML = '<a href=\"#demo\">Book a free demo</a>';",
         })
         self.assertVerdict(res, 4, "MANUAL")
 
-    @unittest.expectedFailure  # KNOWN-DEFECT: a root dir named build/ is skipped whole
     def test_lorem_under_root_named_build_fails(self):
+        # FIXED 2026-11-05: iter_files compares dirs below the root only
         res = self.run_checks("01", {
             "index.html": "<h1>x</h1>",
             "app.js": "lorem ipsum",
@@ -273,26 +310,32 @@ class Spec02(FixtureTest):
         res = self.run_checks("02", files)
         self.assertVerdict(res, 10, "PASS", ".env not seen in .gitignore")
 
-    @unittest.expectedFailure  # KNOWN-DEFECT: yaml/sql/json are not scanned for secrets
     def test_secret_in_yaml_fails(self):
+        # FIXED 2026-11-05: SCAN_EXTS covers yaml/sql/json/config file types
         files = dict(CRUD)
         files["config.yaml"] = "aws_access_key_id: AKIAABCDEFGHIJKLMNOP\n"
         res = self.run_checks("02", files)
         self.assertVerdict(res, 10, "FAIL", "secret-like literal")
 
-    @unittest.expectedFailure  # KNOWN-DEFECT: a committed, unignored .env prints PASS
     def test_committed_env_not_ignored_fails(self):
+        # FIXED 2026-11-05: a .env present but not gitignored fails on its own
         files = dict(CRUD)
         files[".env"] = "RESPAN_API_KEY=sk-live-abcdefghijklmnopqrstuvwxyz\n"
         del files[".gitignore"]
         res = self.run_checks("02", files)
-        self.assertVerdict(res, 10, "FAIL")
+        self.assertVerdict(res, 10, "FAIL", ".env file is present")
 
-    @unittest.expectedFailure  # KNOWN-DEFECT: *_test.go is invisible to the test scan
+    def test_env_ignored_still_passes(self):
+        files = dict(CRUD)
+        files[".env"] = "RESPAN_API_KEY=sk-live-abcdefghijklmnopqrstuvwxyz\n"
+        res = self.run_checks("02", files)
+        self.assertVerdict(res, 10, "PASS")
+
     def test_go_stack_tests_are_manual_not_fail(self):
+        # FIXED 2026-11-05: other-language files make the absence non-conclusive
         res = self.run_checks("02", {"main.go": "package main\n",
                                      "main_test.go": "package main\n"})
-        self.assertVerdict(res, 8, "MANUAL")
+        self.assertVerdict(res, 8, "MANUAL", "other-language file(s)")
 
 
 # ---------------------------------------------------------------- spec 03
