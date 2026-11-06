@@ -112,6 +112,25 @@ Mutation probe, 2026-11-07: _QUOTED_PATH_LINE_RE reverted to the loose
 round-2 form -> test_quoted_content_line_does_not_poison_file_column
 failed with "AssertionError: 'notes.sql' != 'done'" (poisoning
 reappears); restored -> green.
+
+Fourth review round (build-pr) on 72e5572, 2026-11-07 — watched red
+first: test_textconv_filters_cannot_replace_patch_body failed with
+"AssertionError: 1 != 0 : textconv must not replace the patch body" —
+porcelain git log -p applies .gitattributes-driven textconv filters BY
+DEFAULT, so the exact fixture (.gitattributes `*.secret diff=hide` +
+config diff.hide.textconv = echo TEXTCONV-REPLACED-THIS-CONTENT,
+key.secret holding a planted fake sk- key) scanned CLEAN (exit 0): the
+round-1 CRITICAL class through a different config door.
+--no-textconv now pins the patch body to real committed content; the
+two docstring claims the defect falsified verbatim (ambient-config
+defense list, reachability boundary) were corrected to name the pin.
+The fixture is the standard real-world textconv setup (GPG-encrypted
+files, office docs) — no malice required.
+
+Mutation probe, 2026-11-07: --no-textconv dropped from the pinned
+command -> test_textconv_filters_cannot_replace_patch_body failed with
+"AssertionError: 1 != 0" (the exact false clean reappears; only
+failure in the run); restored -> green.
 """
 
 import io
@@ -607,6 +626,34 @@ class EndToEndTests(unittest.TestCase):
                       "COMMIT column must carry the full 40-hex sha even "
                       "under log.abbrevCommit / core.abbrev:\n"
                       + done.stdout)
+
+    def test_textconv_filters_cannot_replace_patch_body(self):
+        # Regression 2026-11-07 round 4 (watched red): porcelain
+        # `git log -p` applies textconv filters BY DEFAULT, so a repo
+        # with .gitattributes `*.secret diff=hide` plus config
+        # diff.hide.textconv made the pinned command emit
+        # `+TEXTCONV-REPLACED-THIS-CONTENT <tmpfile>` instead of the real
+        # content line: a committed key.secret holding a fake sk- key
+        # scanned CLEAN (exit 0) -- the round-1 CRITICAL class (silent
+        # false clean) through a different config door. --no-textconv
+        # pins the patch body to real committed content. Real-world
+        # trigger needs no malice: textconv is the standard setup for
+        # GPG-encrypted files and office docs.
+        self._commit_file(".gitattributes", "*.secret diff=hide\n")
+        cfg = self._git("config", "diff.hide.textconv",
+                        "echo TEXTCONV-REPLACED-THIS-CONTENT")
+        self.assertEqual(cfg.returncode, 0, cfg.stderr)
+        self._commit_file("key.secret",
+                          'api_key = "sk-testFAKE0000000000000000"\n')
+        done = self._run_scanner()
+        self.assertEqual(1, done.returncode,
+                         "textconv must not replace the patch body:\n"
+                         + done.stdout + done.stderr)
+        self.assertIn("api-key-sk", done.stdout)
+        self.assertIn("sk-testFAKE", done.stdout)
+        self.assertNotIn("TEXTCONV-REPLACED-THIS-CONTENT", done.stdout,
+                         "textconv output must not reach the findings:\n"
+                         + done.stdout)
 
 
 if __name__ == "__main__":
