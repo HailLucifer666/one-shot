@@ -6,13 +6,13 @@ Spec in, verified project out. A skill that makes an AI coding agent plan like a
 
 ```sh
 # Claude Code (installs to ~/.claude/skills)
-git clone <your-repo-url> one-shot && cd one-shot && ./install.sh
+git clone https://github.com/HailLucifer666/one-shot.git one-shot && cd one-shot && ./install.sh
 
 # OpenCode (global skills dir)
-git clone <your-repo-url> one-shot && cd one-shot && ./install.sh ~/.config/opencode/skill
+git clone https://github.com/HailLucifer666/one-shot.git one-shot && cd one-shot && ./install.sh ~/.config/opencode/skill
 
 # ZCode
-git clone <your-repo-url> one-shot && cd one-shot && ./install.sh ~/.zcode/skills
+git clone https://github.com/HailLucifer666/one-shot.git one-shot && cd one-shot && ./install.sh ~/.zcode/skills
 
 # Harnesses without a skills loader (Codex CLI, Gemini CLI, ...): copy the
 # one-shot/ folder anywhere and point the agent at it - add to AGENTS.md:
