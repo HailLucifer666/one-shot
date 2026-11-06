@@ -44,7 +44,10 @@ srcPrefix / dstPrefix) so ambient user config cannot change the output
 shape the parser depends on (format.pretty=oneline used to silence the
 scanner into a false "clean"); --no-ext-diff is belt-and-suspenders (git
 log runs external diff drivers only on an explicit --ext-diff; verified
-not invoked with the flag removed); scan_log_text() additionally refuses
+not invoked with the flag removed); --no-abbrev-commit keeps the COMMIT
+column at the full 40-hex sha regardless of log.abbrevCommit / core.abbrev
+(a 4-hex sha can collide across commits and collapse the dedupe);
+scan_log_text() additionally refuses
 patch content with no `commit <sha>` headers (ScanError -> exit 2) so any
 future shape surprise is loud, never silent; and the git call has a 120s
 timeout so a hung git cannot hang CI.
@@ -88,8 +91,14 @@ _AB_PATH_LINE_RE = re.compile(r"^(?:---|\+\+\+) (?:a/|b/|/dev/null)")
 # core.quotePath (default true) C-quotes non-ASCII filenames, so the line
 # arrives as `+++ "b/caf\303\251.md"`. Verified live on git 2.53: quoted
 # lines carry no trailing TAB there; the optional \t tolerates versions
-# that append one.
-_QUOTED_PATH_LINE_RE = re.compile(r'^(?:---|\+\+\+) "(.+)"\t?$')
+# that append one. The quoted body must carry the same a/ b/ /dev/null
+# prefix set as the plain form: a removed content line shaped `-- "done"`
+# (SQL comment quoting an identifier) renders as `--- "done"` and must
+# fall through to the patch-body branch, not poison the FILE column
+# (round-3 fix). Greedy .* is safe: raw quotes inside quoted bodies are
+# always backslash-escaped (reviewer-verified).
+_QUOTED_PATH_LINE_RE = re.compile(
+    r'^(?:---|\+\+\+) "((?:a|b)/.*|/dev/null)"\t?$')
 
 # Same for the diff --git header of a quoted path: both sides quoted.
 _DIFF_GIT_QUOTED_RE = re.compile(r'^diff --git "(?:.+)" "(.+)"$')
@@ -158,7 +167,10 @@ def run_git_log(repo):
     # dstPrefix config. --no-ext-diff is belt-and-suspenders: git log runs
     # external diff drivers only on an explicit --ext-diff (verified: not
     # invoked with this flag removed), so this closes an already-shut
-    # door. --no-color is the same defense class: a user's color.ui=always
+    # door. --no-abbrev-commit keeps the COMMIT column at the full 40-hex
+    # sha no matter the user's log.abbrevCommit / core.abbrev: a 4-hex
+    # sha can collide across commits and collapse the dedupe.
+    # --no-color is the same defense class: a user's color.ui=always
     # would corrupt parsing.
     cmd = [
         "git", "-C", repo,
@@ -168,6 +180,7 @@ def run_git_log(repo):
         "-c", "diff.dstPrefix=b/",
         "log", "--all", "-p",
         "--no-color", "--pretty=medium", "--no-ext-diff",
+        "--no-abbrev-commit",
     ]
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE,
