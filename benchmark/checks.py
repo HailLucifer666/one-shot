@@ -29,6 +29,10 @@ SKIP_DIRS = {"node_modules", ".git", ".next", "dist", "build", ".venv", "venv",
              "__pycache__", "one-shot-work", ".cache"}
 CODE_EXTS = {".js", ".ts", ".jsx", ".tsx", ".py", ".html", ".htm", ".vue",
              ".svelte", ".css"}
+# 2026-11-05 (audit): the secrets scan reads config/data file types too - a
+# token pasted into config.yaml or a seed .sql was invisible to CODE_EXTS.
+SCAN_EXTS = CODE_EXTS | {".json", ".yaml", ".yml", ".toml", ".sql", ".sh",
+                         ".bat", ".ps1", ".ini", ".cfg", ".txt", ".md"}
 
 
 COUNTS = {}
@@ -50,7 +54,9 @@ def iter_files(root, exts):
     for p in sorted(root.rglob("*")):
         if not p.is_file() or p.suffix.lower() not in exts:
             continue
-        if SKIP_DIRS & set(p.parts):
+        # 2026-11-05 (audit): compare against parts below the root only, so a
+        # project root that is itself named build/ or dist/ is not skipped whole.
+        if SKIP_DIRS & set(p.relative_to(root).parts[:-1]):
             continue
         yield p
 
@@ -112,9 +118,16 @@ def spec01(root):
     h1_text = [re.sub(r"<[^>]+>", "", t).strip() for t in h1s]
     if len(h1s) == 1 and h1_text[0]:
         out(2, "PASS", f"one h1 in {rel}: '{h1_text[0][:60]}' (confirm wording states the product)")
-    else:
+    elif h1s:
         why = "empty h1" if len(h1s) == 1 else f"{len(h1s)} h1 tags"
         out(2, "FAIL", f"{why} in {rel}")
+    elif re.search(r"<script\b", stripped, re.I) or any(iter_files(root, {".js", ".mjs"})):
+        # 2026-11-05 (audit): a JS-capable page can render its h1 at runtime, so a
+        # static zero is not conclusive. A static-only page without h1 still FAILs.
+        out(2, "MANUAL", "0 h1 tags statically but the page runs script; "
+                         "open it and confirm exactly one h1")
+    else:
+        out(2, "FAIL", f"0 h1 tags in {rel}")
 
     # 3: six sections in document order (keyword markers, first occurrence)
     markers = [("hero", r"<h1\b"), ("benefits", r"benefit"), ("how-it-works", r"how it works"),
@@ -134,15 +147,26 @@ def spec01(root):
             + ", ".join(f"{l}@{p}" for l, p in positions) + "; check the six sections by eye")
 
     # 4: button text, #demo anchor, labeled name+email inputs
+    blob = source_text(root)
     has_btn = "Book a free demo" in stripped
     has_anchor = re.search(r"""href\s*=\s*["']#demo["']""", stripped, re.I) is not None
     email_in = re.search(r"""<input\b[^>]*(?:type|name|id|autocomplete)\s*=\s*["']email["']""", stripped, re.I)
     name_in = re.search(r"""<input\b[^>]*(?:name|id)\s*=\s*["']name["']""", stripped, re.I)
     labels = [t.lower() for t in re.findall(r"<label\b[^>]*>(.*?)</label>", stripped, re.I | re.S)]
     if not has_btn:
-        out(4, "FAIL", f"exact text 'Book a free demo' not found in {rel}")
+        # 2026-11-05 (audit): the CTA may be rendered by script; text present in
+        # code but not in markup is not a conclusive absence.
+        if "book a free demo" in blob.lower():
+            out(4, "MANUAL", "CTA text found in script but not in static markup; "
+                             "open the page and confirm the button")
+        else:
+            out(4, "FAIL", f"exact text 'Book a free demo' not found in {rel}")
     elif not has_anchor:
-        out(4, "FAIL", f"no href=\"#demo\" anchor in {rel}")
+        if re.search(r"""href\s*=\s*["']#demo["']""", blob, re.I):
+            out(4, "MANUAL", "#demo anchor found in script but not in static markup; "
+                             "confirm the CTA links to the form")
+        else:
+            out(4, "FAIL", f"no href=\"#demo\" anchor in {rel}")
     elif email_in and name_in:
         out(4, "PASS", "button text, #demo anchor and name+email inputs found")
     elif email_in and any("name" in t and "email" in t for t in labels):
@@ -150,12 +174,25 @@ def spec01(root):
     else:
         out(4, "MANUAL", "button and anchor present; confirm the #demo form has labeled name and email inputs")
 
-    # 7: no lorem ipsum (static scan of all scanned text files)
-    blob = source_text(root)
-    if re.search(r"lorem ipsum", blob, re.I):
-        out(7, "FAIL", "'lorem ipsum' found in project files")
+    # 7: no lorem ipsum. 2026-11-06, probed live in the audit battery: the skill arm
+    # writes self-check scripts whose comments name the anti-pattern they grep for,
+    # so scanning every project file made this check FAIL its own verification -
+    # a structural bias against the arm that writes checkers. Conclusive evidence
+    # is lorem in the delivered page's visible text; hits elsewhere are MANUAL.
+    page_hits = [p for p in iter_files(root, {".html", ".htm"})
+                 if re.search(r"lorem ipsum", visible_text(read(p)), re.I)]
+    if page_hits:
+        out(7, "FAIL", "'lorem ipsum' in page text: " + ", ".join(p.name for p in page_hits))
     else:
-        out(7, "PASS", "no 'lorem ipsum' in static scan of project files")
+        other = [p for p in iter_files(root, SCAN_EXTS)
+                 if re.search(r"lorem ipsum", read(p), re.I)]
+        if other:
+            names = ", ".join(p.name for p in other[:3])
+            out(7, "MANUAL", f"page text is clean, but 'lorem ipsum' appears in non-page "
+                             f"file(s) ({names}) - usually a checker naming the anti-pattern; "
+                             "confirm the copy itself contains none")
+        else:
+            out(7, "PASS", "no 'lorem ipsum' in the page's visible text or project files")
 
     # 8: title, meta description, favicon
     title_ok = re.search(r"<title>[^<]+</title>", stripped, re.I) is not None
@@ -189,7 +226,6 @@ def spec01(root):
 
 def spec02(root):
     blob = source_text(root)
-    n_files = sum(1 for _ in iter_files(root, CODE_EXTS))
 
     # 2: hashed passwords (auth/hashing library referenced, else inspect the DB)
     m = re.search(r"better-auth|next-auth|lucia|passport|bcrypt|argon2|scrypt|pbkdf2"
@@ -207,21 +243,44 @@ def spec02(root):
     if tests:
         out(8, "PASS", f"{len(tests)} test file(s) found (run the README's documented command to confirm they pass)")
     else:
-        out(8, "FAIL", "no test files found in the project")
+        # 2026-11-05 (audit): other stacks name tests differently (_test.go, PHP
+        # spec/...). Their absence from the JS/Python scan is not conclusive.
+        others = list(iter_files(root, {".go", ".rb", ".java", ".php", ".cs", ".rs",
+                                        ".kt", ".swift", ".c", ".cpp"}))
+        if others:
+            out(8, "MANUAL", f"no tests in scanned JS/Python types, but {len(others)} "
+                             f"other-language file(s) such as {others[0].name}; check "
+                             "that stack's own test naming and run them")
+        else:
+            out(8, "FAIL", "no test files found in the project")
 
     # 10: no secrets committed; .env.example exists
     if not (root / ".env.example").is_file():
         out(10, "FAIL", ".env.example missing at project root")
     else:
+        # 2026-11-05 (audit): scan config/data/doc file types (SCAN_EXTS), more token
+        # shapes, and a committed .env itself. A .env present but not gitignored is a
+        # FAIL on its own - it will be committed whatever its content looks like.
+        scanned = list(iter_files(root, SCAN_EXTS))
+        blob10 = "\n".join(read(p) for p in scanned) + read(root / ".env") \
+            + read(root / ".env.example") + read(root / "README.md")
+        env_ignored = re.search(r"^\.env\b", read(root / ".gitignore"), re.M) is not None
+        env_committed = (root / ".env").is_file() and not env_ignored
         secret_pat = re.search(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}"
-                               r"|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}",
-                               blob + read(root / ".env.example") + read(root / "README.md"))
-        if secret_pat:
+                               r"|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}"
+                               r"|github_pat_[A-Za-z0-9_]{30,}|AIza[0-9A-Za-z_\-]{35}"
+                               r"|xox[baprs]-[A-Za-z0-9-]{10,}",
+                               blob10)
+        if env_committed:
+            out(10, "FAIL", "a .env file is present but .gitignore does not ignore .env - "
+                            "it would be committed; remove it or ignore it")
+        elif secret_pat:
             out(10, "FAIL", f"secret-like literal matched pattern '{secret_pat.group(0)[:12]}...'")
         else:
-            gitignore = read(root / ".gitignore")
-            note = "" if re.search(r"^\.env\b", gitignore, re.M) else "; .env not seen in .gitignore - confirm it is ignored"
-            out(10, "PASS", f".env.example present; no obvious secret patterns in {n_files} file(s) scanned{note}")
+            note = "" if env_ignored else "; .env not seen in .gitignore - confirm it is ignored"
+            out(10, "PASS", f".env.example present; no obvious secret patterns in "
+                            f"{len(scanned)} file(s) scanned (denylist scan - absence of "
+                            f"a pattern is evidence, not proof){note}")
 
     manual_block([
         (1, "sign up a new user, log out, log back in, log out - record each result"),
@@ -395,31 +454,35 @@ def spec04(root):
                     out(3, "FAIL", "; ".join(over))
                 else:
                     out(3, "PASS", f"all {len(markers)} slide segment(s) at 40 words or fewer (chrome and notes excluded)")
-        note_hits = len(re.findall(r"data-notes\s*=|<aside\b", html, re.I))
-        # 2026-11-01 (audit B11): marker presence alone passed decks whose asides were
-        # empty until JS filled them; count non-empty asides instead, fail open to MANUAL.
-        non_empty = sum(1 for a in re.findall(r"<aside\b[^>]*>(.*?)</aside>", html, re.I | re.S)
-                        if visible_text(a).strip())
-        if non_empty >= 8:
-            out(4, "PASS", f"{non_empty} speaker-note aside(s) with visible text")
-        elif note_hits >= 8:
-            out(4, "MANUAL", f"{note_hits} note marker(s) but only {non_empty} with static text; "
-                             "open the deck, toggle notes (N key or control), verify notes with content on all 8 slides")
-        elif note_hits == 0:
-            # 2026-10-31: a baseline deck rendered notes via JS-created asides — static absence
-            # is not conclusive; the notes UI must be checked live
-            out(4, "MANUAL", "no static note markers; open the deck, toggle notes (N key or control), "
-                             "verify notes with content on all 8 slides")
-        else:
-            out(4, "MANUAL", f"{note_hits} note marker(s) static; confirm notes on all 8 slides")
-        # 2026-11-01 (audit B10): criteria 6/8/10 were printed only when 1-7 note markers
-        # existed; the promised one-line-per-criterion contract broke on the other branches
-        # (verified live: all four 04-run outputs lacked c6/c8/c10). Always print them.
-        manual_block([
-            (6, "confirm text is 24pt equivalent with 4.5:1 contrast"),
-            (8, "check arrow-key navigation works"),
-            (10, "open the file; no repair prompts or console errors"),
-        ])
+            # 2026-11-05 (audit): the notes scan and the 6/8/10 block below used to sit
+            # outside this html-present branch and crashed with UnboundLocalError when a
+            # project had neither .pptx nor HTML (html unbound). Moved inside; the
+            # no-deck branch already prints 6/8/10 in its own manual_block above.
+            note_hits = len(re.findall(r"data-notes\s*=|<aside\b", html, re.I))
+            # 2026-11-01 (audit B11): marker presence alone passed decks whose asides were
+            # empty until JS filled them; count non-empty asides instead, fail open to MANUAL.
+            non_empty = sum(1 for a in re.findall(r"<aside\b[^>]*>(.*?)</aside>", html, re.I | re.S)
+                            if visible_text(a).strip())
+            if non_empty >= 8:
+                out(4, "PASS", f"{non_empty} speaker-note aside(s) with visible text")
+            elif note_hits >= 8:
+                out(4, "MANUAL", f"{note_hits} note marker(s) but only {non_empty} with static text; "
+                                 "open the deck, toggle notes (N key or control), verify notes with content on all 8 slides")
+            elif note_hits == 0:
+                # 2026-10-31: a baseline deck rendered notes via JS-created asides — static absence
+                # is not conclusive; the notes UI must be checked live
+                out(4, "MANUAL", "no static note markers; open the deck, toggle notes (N key or control), "
+                                 "verify notes with content on all 8 slides")
+            else:
+                out(4, "MANUAL", f"{note_hits} note marker(s) static; confirm notes on all 8 slides")
+            # 2026-11-01 (audit B10): criteria 6/8/10 were printed only when 1-7 note markers
+            # existed; the promised one-line-per-criterion contract broke on the other branches
+            # (verified live: all four 04-run outputs lacked c6/c8/c10). Always print them.
+            manual_block([
+                (6, "confirm text is 24pt equivalent with 4.5:1 contrast"),
+                (8, "check arrow-key navigation works"),
+                (10, "open the file; no repair prompts or console errors"),
+            ])
 
     manual_block([
         (2, "read each headline; takeaway, not a topic label"),

@@ -54,7 +54,18 @@ Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: amb
 - **Token economics differ by spec.** Mean tokens per run: baseline 1.99M vs skill 2.72M. Per spec: slide decks **2.7x cheaper with the skill** (0.69M vs 1.84M — its verify loop skipped rework), auth apps **2.6x dearer** (4.45M vs 1.69M — it built TypeScript, helmet, rate limiting and 48-56-test suites where baselines built 26-36-test JavaScript), dashboards 2.1x dearer.
 - **Depth beyond the criteria.** Skill-arm apps consistently shipped more than the spec asked nowhere and more *verification* than baselines: self-authored checkers in every `one-shot-work/`, gate-style known-limitations sections in every report, four self-caught defects fixed mid-build in one game.
 - **A scorer lesson, published as required.** Three checker false-FAILs were caught by measuring twice (.mjs test files, deck chrome in word counts, JS-rendered speaker notes); one apparent skill win dissolved under independent measurement into the tie recorded here. The scoring method and every correction are in the run records.
-- Earlier OpenCode pilot runs (2 models x 5 specs) are retained as exploratory data only — see `PILOT.md` in the runs tree; they are not part of this table.
+- Earlier OpenCode pilot runs (2 models x 5 specs) are retained as exploratory data only — in the project workspace archive, not in this repo; they are not part of this table.
+
+### Re-measurement: v0.1.4 (2026-11-05, audit battery)
+
+A full 20-run re-measurement (5 specs x 2 arms x 2 repeats, same protocol: fresh session per run, verbatim prompts, one prompt only, MANUAL criteria judged from recorded verification evidence) ran as part of the 2026-11-05 audit, after the scorer gained a 66-test calibration suite and false-FAIL fixes. Records in `benchmark/runs-v014/`, builds archived in the project workspace; full protocol deviations disclosed in [`AUDIT-2026-11-05.md`](AUDIT-2026-11-05.md).
+
+| Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| glm-5.3-flash (ZCode) | baseline | 10 | 10/10 | 10.0 | 0 | 3,310,820 |
+| glm-5.3-flash (ZCode) | skill | 10 | 10/10 | 10.0 | 0 | 5,072,516 |
+
+**The honest headline: the tie replicates.** A strong model maxes these specs in both arms; the ceiling noted below still holds. Token premium overall 1.53x, concentrated in the auth spec (5.09x) and absent on the game spec (0.94x); the October deck-economics finding reversed at n=2 — read neither as a trend. The skill arm produced `one-shot-work/` state and a recorded release gate in 10/10 runs and self-caught real defects mid-build in 6/10; baselines self-corrected in 4/10. The skill arm ran v0.1.4 (sha256 prefix `e183a8cd00db0302`); v0.1.5 (version field, autonomous retry fallback, template-path references) is **unmeasured**. Ambient catalog differed from October (dev-studio playbooks present in both arms), so cross-battery comparison is confounded; within-battery comparison is like-for-like.
 
 **Limitations of this measurement:** n=10 per arm, one model, one harness, one weekend. The benchmark's criteria were not hard enough to separate arms on a model that maxes them — distinguishing pass-rate differences needs harder specs or weaker models. Manual criteria were judged from each run's recorded browser-verification evidence with independent spot-checks of the riskiest claims (deck word caps, speaker notes, game persistence); the full method is disclosed in every RESULT.json. Never claim secure or bug-free: all 20 outputs are benchmark artifacts, not audited software.
 
@@ -73,9 +84,11 @@ A harder five-spec pack (vague brief, conflicting requirements, security traps, 
 ## Repo layout
 
 - `one-shot/`: the skill (SKILL.md, gate.md, modules/, templates/)
-- `benchmark/`: five specs, scoring guide, run scaffolder
+- `benchmark/`: five specs, scoring guide, run scaffolder, calibration suite (`test_checks.py`)
+- `benchmark-hard/`: the adversarial five-spec pack, its pre-registrations and results
 - `docs/`: PRD, MVP, SOW, stack notes, build prompt
-- `scripts/validate_skill.py`: checks frontmatter, size and references
+- `scripts/`: `validate_skill.py` (checks frontmatter, size and references) and its tests
+- `AUDIT-2026-11-01.md`, `AUDIT-2026-11-05.md`: the two full audits — findings, probes, triage
 
 ## License
 

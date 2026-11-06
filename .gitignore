@@ -3,6 +3,9 @@
 # force-added and tracked on purpose (audit item B12) so the published table
 # is reproducible from the repo alone. New run dirs remain ignored.
 benchmark/runs/
+# 2026-11-05 audit battery - separate tree so init/run cannot touch the
+# vendored records above; vendor it the same deliberate way if ever published
+benchmark/runs-v014/
 .DS_Store
 .env
 __pycache__/
