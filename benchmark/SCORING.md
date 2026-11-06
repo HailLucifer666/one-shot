@@ -13,6 +13,7 @@ Goal: compare the same model with and without the skill on the same single promp
 - criteria_passed: number out of 10. Machine-checkable criteria come from `benchmark/checks.py` output; only the criteria it prints as MANUAL are judged by hand, and every hand-judged criterion is footnoted in `notes`.
 - follow_up_prompts_needed: for runs with criteria_passed of 7 or more, count by actually sending follow-up prompts until 10 of 10. For runs under 7, write the string `">X"` where X is an integer lower-bound estimate (for example `">4"`); do not grind a broken build. The summary counts `>X` as X and marks a censored median with a trailing `+` (for example `3+`).
 - tokens_used: from your tool's usage display, or null. In skill mode this includes the skill-instruction overhead, so cross-mode token comparison overstates the skill's cost. README states this wherever a token column appears.
+- run-complete.json: the sentinel `summary()` gates on - it proves the run actually finished and was scored. Write it with `python benchmark/run_benchmark.py complete --model <m> --mode <mode> --spec NN --run N`, which refuses unscored runs. A scored run without a sentinel is excluded from the table and reported by name under "skipped"; nothing is dropped silently.
 - notes: one line on the main failure.
 
 ## Checks
