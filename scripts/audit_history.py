@@ -28,6 +28,9 @@ Design decisions (set by the controller 2026-11-07, implemented as-is):
 - Output: one line per hit,
   PATTERN <name> | COMMIT <sha> | FILE <path> | <excerpt: window around
   the matched span, ~40 chars either side, ellipses where trimmed>.
+  The excerpt is taken from the raw patch line, so it may begin with the
+  +/- diff marker (kept deliberately: the marker shows whether the line
+  was added or removed).
   Identical (pattern, commit, file, excerpt) tuples are reported once; the
   same content in different commits is reported per commit (history
   matters for cleaning). Every match on a line is reported (not just the
@@ -39,15 +42,20 @@ Output-shape defenses (quality-audit fix, 2026-11-07): the git command
 pins --pretty=medium and the diff prefixes (-c diff.noprefix / mnemonic /
 srcPrefix / dstPrefix) so ambient user config cannot change the output
 shape the parser depends on (format.pretty=oneline used to silence the
-scanner into a false "clean"); --no-ext-diff keeps a user's diff.external
-out of the patch text; scan_log_text() additionally refuses patch content
-with no `commit <sha>` headers (ScanError -> exit 2) so any future shape
-surprise is loud, never silent; and the git call has a 120s timeout so a
-hung git cannot hang CI.
+scanner into a false "clean"); --no-ext-diff is belt-and-suspenders (git
+log runs external diff drivers only on an explicit --ext-diff; verified
+not invoked with the flag removed); scan_log_text() additionally refuses
+patch content with no `commit <sha>` headers (ScanError -> exit 2) so any
+future shape surprise is loud, never silent; and the git call has a 120s
+timeout so a hung git cannot hang CI.
 
 Known non-coverage (accepted for this task): commit messages (see above),
 binary-file contents ("Binary files ... differ" lines carry no text), and
-anything not reachable via `git log --all -p`.
+anything not reachable via `git log --all -p` -- concretely, a secret
+introduced only in a merge resolution does not appear in this output
+(verified on this git). Exit 0 therefore certifies "no secrets reachable
+by git log --all -p", NOT the whole history; any future CI check built on
+this tool must not be trusted past that boundary.
 """
 
 import argparse
@@ -63,7 +71,12 @@ Finding = namedtuple("Finding", ["pattern", "commit", "file", "excerpt"])
 # always fully inside the excerpt.
 _EXCERPT_RADIUS = 40
 
-_COMMIT_RE = re.compile(r"^commit ([0-9a-f]{7,40})(?:\s|$)")
+# 4 hex minimum: core.abbrev=4 shortens medium-format headers to
+# `commit 933a` (git's abbrev floor is 4; shape verified live on git
+# 2.53). Safe at column 0 -- patch lines are always prefixed and commit
+# messages are indented, so a short-hex `commit ` token there can only
+# be a header.
+_COMMIT_RE = re.compile(r"^commit ([0-9a-f]{4,40})(?:\s|$)")
 
 # File-path lines are trusted only in the exact shape git emits: the two
 # dashes/plusses, a space, then a known prefix. A removed source line that
@@ -71,6 +84,22 @@ _COMMIT_RE = re.compile(r"^commit ([0-9a-f]{7,40})(?:\s|$)")
 # used to be taken for a path line, poisoning the FILE column (fixed
 # 2026-11-07). a/ b/ are pinned on the git command line (see run_git_log).
 _AB_PATH_LINE_RE = re.compile(r"^(?:---|\+\+\+) (?:a/|b/|/dev/null)")
+
+# core.quotePath (default true) C-quotes non-ASCII filenames, so the line
+# arrives as `+++ "b/caf\303\251.md"`. Verified live on git 2.53: quoted
+# lines carry no trailing TAB there; the optional \t tolerates versions
+# that append one.
+_QUOTED_PATH_LINE_RE = re.compile(r'^(?:---|\+\+\+) "(.+)"\t?$')
+
+# Same for the diff --git header of a quoted path: both sides quoted.
+_DIFF_GIT_QUOTED_RE = re.compile(r'^diff --git "(?:.+)" "(.+)"$')
+
+# Short forms git's C-quoting uses; every other non-printable byte arrives
+# as backslash + three octal digits (handled in _unquote_git_path).
+_C_SHORT_ESCAPES = {
+    '"': b'"', "\\": b"\\", "a": b"\a", "b": b"\b", "f": b"\f",
+    "n": b"\n", "r": b"\r", "t": b"\t", "v": b"\v",
+}
 
 # Each entry: (report name, compiled regex). Rationale for the non-obvious
 # shapes lives inline. All matching runs on the raw patch line (diff marker
@@ -126,9 +155,11 @@ def run_git_log(repo):
     # `commit <sha>` headers and used to silence the scanner entirely),
     # the -c diff.* pins force the standard a/ b/ path-line prefixes no
     # matter the user's diff.noprefix / mnemonicPrefix / srcPrefix /
-    # dstPrefix config, and --no-ext-diff keeps a user's diff.external
-    # config out of the patch text. --no-color is the same defense class:
-    # a user's color.ui=always would corrupt parsing.
+    # dstPrefix config. --no-ext-diff is belt-and-suspenders: git log runs
+    # external diff drivers only on an explicit --ext-diff (verified: not
+    # invoked with this flag removed), so this closes an already-shut
+    # door. --no-color is the same defense class: a user's color.ui=always
+    # would corrupt parsing.
     cmd = [
         "git", "-C", repo,
         "-c", "diff.noprefix=false",
@@ -154,8 +185,45 @@ def run_git_log(repo):
     return proc.stdout.decode("utf-8", errors="replace")
 
 
+def _unquote_git_path(quoted_body):
+    """Decode the body of a git C-quoted path (the text between quotes).
+
+    git escapes '"' and '\\' with a backslash and non-printable/non-ASCII
+    bytes as backslash + three octal digits; octal escapes accumulate as
+    raw bytes and the result is UTF-8 decoded once (git paths are bytes;
+    errors="replace" keeps one weird byte from crashing the audit).
+    """
+    out = bytearray()
+    i = 0
+    while i < len(quoted_body):
+        ch = quoted_body[i]
+        if ch == "\\" and i + 1 < len(quoted_body):
+            short = _C_SHORT_ESCAPES.get(quoted_body[i + 1])
+            if short is not None:
+                out += short
+                i += 2
+                continue
+            octal = quoted_body[i + 1:i + 4]
+            if len(octal) == 3 and all(c in "01234567" for c in octal):
+                out.append(int(octal, 8))
+                i += 4
+                continue
+        out += ch.encode("utf-8")
+        i += 1
+    return out.decode("utf-8", errors="replace")
+
+
 def _path_from_diff_git_line(line):
-    """Extract the b/ side path from a `diff --git a/x b/y` line, or None."""
+    """Extract the b/ side path from a `diff --git a/x b/y` line, or None.
+
+    Handles the plain form (the find offset consumes the b/ prefix) and
+    git's C-quoted form (`diff --git "a/x" "b/y"` under core.quotePath),
+    where the b/ token is unquoted before the prefix is stripped. Checked
+    quoted-first: a quoted a/ path could itself contain a ` b/` substring.
+    """
+    quoted = _DIFF_GIT_QUOTED_RE.match(line)
+    if quoted:
+        return _strip_ab_prefix(_unquote_git_path(quoted.group(1)))
     marker = line.find(" b/")
     if marker == -1:
         return None
@@ -212,10 +280,14 @@ def scan_log_text(text):
     `commit <sha>` headers) and current file (from diff --git / --- / +++
     path lines). Only patch-body lines and path lines are pattern-scanned;
     everything else is git metadata or commit-message text (design
-    decision 1). Paths are best-effort: quoted paths with spaces fall back
-    to the ---/+++ lines, which follow every diff --git line anyway, and a
-    path is trusted only from `--- / +++` lines with a/ b/ /dev/null
-    prefixes (_AB_PATH_LINE_RE) so removed content like `-- sql comments`
+    decision 1). Paths are best-effort: the diff --git line sets the path
+    first and the ---/+++ lines, which follow every diff --git line,
+    correct it. git does NOT quote spaces -- a space filename arrives
+    unquoted with one trailing TAB separator (stripped here) -- and paths
+    quoted by core.quotePath (non-ASCII) are C-unescaped back into real
+    filenames. A path is trusted only from `--- / +++` lines with a/
+    b/ /dev/null prefixes, quoted or not (_AB_PATH_LINE_RE /
+    _QUOTED_PATH_LINE_RE), so removed content like `-- sql comments`
     cannot poison the FILE column.
 
     Tripwire (quality-audit fix, 2026-11-07): patch lines with zero commit
@@ -244,7 +316,18 @@ def scan_log_text(text):
             continue
         if _AB_PATH_LINE_RE.match(line):
             patch_lines += 1
-            new_path = _strip_ab_prefix(line[4:])
+            # git does not quote spaces: a space filename arrives unquoted
+            # with one trailing TAB separator (`+++ b/my file.sql\t`).
+            new_path = _strip_ab_prefix(line[4:]).rstrip("\t")
+            if new_path and new_path != "/dev/null":
+                path = new_path
+            _scan_line(line, commit, path, findings, seen)
+            continue
+        quoted_match = _QUOTED_PATH_LINE_RE.match(line)
+        if quoted_match:
+            patch_lines += 1
+            new_path = _strip_ab_prefix(
+                _unquote_git_path(quoted_match.group(1)))
             if new_path and new_path != "/dev/null":
                 path = new_path
             _scan_line(line, commit, path, findings, seen)

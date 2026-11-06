@@ -45,16 +45,53 @@ command -> test_repo_pretty_oneline_config_still_scans failed with
 output has 4 patch line(s) but no 'commit <sha>' headers; output shape
 is not the expected --pretty=medium") — the tripwire turned the old
 silent exit 0 into a loud exit 2; restored -> green. (b) tripwire
-disabled (pin intact) -> all 19 green: the pin is the primary defense
-for the known shape, the tripwire the backstop whose fail-loud behavior
-probe (a) demonstrated live. Restored -> green.
+disabled (pin intact) -> all 19 green: the pin shields the subprocess
+layer, while scan_log_text itself is pure and directly reachable with
+synthetic text regardless of any config — pinned by its own unit test
+in the second round below (the earlier "backstop, unreachable while
+the pin holds" framing was wrong at the unit layer and is withdrawn).
+Restored -> green.
+
+Second review round on aef7a9a, 2026-11-07 — watched red first:
+- test_quoted_path_line_unquoted_into_real_filename:
+  "AssertionError: 'café.md' != None" (core.quotePath-quoted path lines
+  were rejected; the finding degraded to FILE None).
+- test_space_filename_path_line_has_no_trailing_tab:
+  "AssertionError: 'my file.sql' != 'my file.sql\t'" (git appends a TAB
+  separator to unquoted space-filename path lines; it rode into FILE).
+- test_quoted_utf8_filename_reports_real_name:
+  "AssertionError: 'FILE café.md | ' not found in '... | FILE None | ...'".
+- test_abbreviated_commit_headers_still_scan:
+  "AssertionError: 1 != 2" with the tripwire message on stderr
+  (core.abbrev=4 headers fell below _COMMIT_RE's {7,40}; a legitimate
+  repo exited 2 with a message that never mentioned abbrev).
+Coverage guards green on arrival by design — they pin behavior already
+shipped in aef7a9a that had no committed test:
+test_headerless_patch_text_raises_and_headered_scans,
+test_git_timeout_maps_to_exit_2_with_loud_stderr. Byte shapes for the
+synthetic fixtures verified live on git 2.53: `+++ b/my file.sql\t`
+(TAB separator, no quoting), `+++ "b/caf\303\251.md"` (quoted, no
+trailing TAB on this git — the regex keeps \t optional), `commit 933a`
+under core.abbrev=4.
+
+Mutation probe, 2026-11-07: quoted-path support reverted to the true
+pre-fix state (both the scan_log_text quoted branch and the quoted
+diff --git handling) -> test_quoted_utf8_filename_reports_real_name and
+test_quoted_path_line_unquoted_into_real_filename failed with FILE None
+/ "None != café.md"; restored -> green. A narrower mutation (only the
+scan_log_text quoted branch disabled, quoted diff --git handling kept)
+stayed green: the two quoted-path setters redundantly back each other
+up, which is exactly the ---/+++ correction the scanner docstring
+describes.
 """
 
+import io
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -257,6 +294,89 @@ class ScanLogTextUnitTests(unittest.TestCase):
         self.assertNotEqual(first[0].excerpt, second[0].excerpt,
                             "distinct secrets must dedupe separately")
 
+    def test_quoted_path_line_unquoted_into_real_filename(self):
+        # Regression 2026-11-07 round 2 (watched red): core.quotePath
+        # (default true) makes git emit `+++ "b/caf\303\251.md"` for
+        # non-ASCII filenames; the strict path regex rejected the quoted
+        # form and _path_from_diff_git_line returned None on the quoted
+        # diff --git line, so findings degraded to FILE None. The quoted
+        # body (including the b/ prefix) is C-unescaped -- \" and \\ plus
+        # three-digit octal bytes -- then UTF-8 decoded. Byte shape
+        # verified live on git 2.53: quoted lines carry no trailing TAB
+        # here; the optional \t in the regex tolerates versions that do.
+        text = "\n".join([
+            "commit " + SHA_A,
+            "diff --git \"a/caf\\303\\251.md\" \"b/caf\\303\\251.md\"",
+            "--- \"a/caf\\303\\251.md\"",
+            "+++ \"b/caf\\303\\251.md\"",
+            "@@ -1,1 +1,2 @@",
+            "+api_key = \"fakekeyvalue123\"",
+            "",
+        ])
+        findings = self._scan(text)
+        self.assertEqual(["api-key-literal"], [f.pattern for f in findings])
+        self.assertEqual("caf\u00e9.md", findings[0].file,
+                         "quoted path must unescape to the real filename, "
+                         "got: {}".format(findings[0].file))
+
+    def test_space_filename_path_line_has_no_trailing_tab(self):
+        # Regression 2026-11-07 round 2 (watched red): git does NOT quote
+        # space filenames -- it appends a TAB separator instead
+        # (`+++ b/my file.sql\t`, byte shape verified live on git 2.53),
+        # and the raw line[4:] slice carried that TAB into the FILE column
+        # (pre-existing defect, now stripped).
+        text = "\n".join([
+            "commit " + SHA_A,
+            "diff --git a/my file.sql b/my file.sql",
+            "--- a/my file.sql\t",
+            "+++ b/my file.sql\t",
+            "@@ -1,1 +1,2 @@",
+            "+api_key = \"fakekeyvalue123\"",
+            "",
+        ])
+        findings = self._scan(text)
+        self.assertEqual(["api-key-literal"], [f.pattern for f in findings])
+        self.assertEqual("my file.sql", findings[0].file,
+                         "FILE column must not carry the TAB separator, "
+                         "got: {}".format(repr(findings[0].file)))
+
+    def test_headerless_patch_text_raises_and_headered_scans(self):
+        # Coverage guard, 2026-11-07 round 2: the tripwire shipped in
+        # aef7a9a had no committed test. scan_log_text is pure and
+        # directly reachable with synthetic text -- the --pretty=medium
+        # pin does NOT shield this layer, so the earlier "unreachable
+        # while the pin holds" note was wrong and has been removed.
+        text = "diff --git a/x b/x\n--- a/x\n+++ b/x\n+sk-fakekey123456\n"
+        with self.assertRaises(audit_history.ScanError):
+            self._scan(text)
+        headed = "commit " + SHA_A + "\n" + text
+        sk = [f for f in self._scan(headed) if f.pattern == "api-key-sk"]
+        self.assertEqual(1, len(sk),
+                         "the same text with a commit header must scan, "
+                         "not raise")
+
+
+class MainUnitTests(unittest.TestCase):
+    """main()-level error mapping that needs no git subprocess."""
+
+    def test_git_timeout_maps_to_exit_2_with_loud_stderr(self):
+        # Coverage guard, 2026-11-07 round 2: the 120s git timeout shipped
+        # in aef7a9a had no committed test. A hung git must exit 2 loudly,
+        # never hang CI and never report clean.
+        def boom(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="git log", timeout=120)
+
+        original_run = audit_history.subprocess.run
+        audit_history.subprocess.run = boom
+        try:
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                code = audit_history.main([])
+        finally:
+            audit_history.subprocess.run = original_run
+        self.assertEqual(2, code)
+        self.assertIn("timed out", stderr.getvalue())
+
 
 class EndToEndTests(unittest.TestCase):
     """Scanner as a subprocess against throwaway git repos: exit codes."""
@@ -350,6 +470,38 @@ class EndToEndTests(unittest.TestCase):
         self.assertNotIn("old sql comment was here", done.stdout,
                          "comment text must not leak into the FILE column "
                          "or any finding:\n" + done.stdout)
+
+    def test_quoted_utf8_filename_reports_real_name(self):
+        # Regression 2026-11-07 round 2 (watched red): end-to-end twin of
+        # the quoted-path unit test -- a real repo file named café.md,
+        # core.quotePath on by default, finding must show the real
+        # filename, not FILE None.
+        self._commit_file("caf\u00e9.md", 'api_key = "fakekeyvalue123"\n')
+        done = self._run_scanner()
+        self.assertEqual(1, done.returncode, done.stdout + done.stderr)
+        self.assertIn("api-key-literal", done.stdout)
+        self.assertIn("FILE caf\u00e9.md | ", done.stdout)
+        self.assertNotIn("FILE None", done.stdout)
+
+    def test_abbreviated_commit_headers_still_scan(self):
+        # Regression 2026-11-07 round 2 (watched red): with core.abbrev=4
+        # the medium-format header is `commit 933a` (shape verified live
+        # on git 2.53), below _COMMIT_RE's old {7,40} minimum; no header
+        # matched, the tripwire fired, and a legitimate repo exited 2 with
+        # a message that never mentioned abbrev. The regex now accepts
+        # 4-40 hex digits (safe at column 0: patch lines are always
+        # prefixed and commit messages are indented). Pinned to exit 1 --
+        # the reviewer allowed 2 as tolerance, but a test accepting 2
+        # could never fail, i.e. could never catch this widening
+        # regressing; a future exit 2 here IS the defect re-appearing.
+        self._git("config", "log.abbrevCommit", "true")
+        self._git("config", "core.abbrev", "4")
+        self._commit_file("note.md", 'key = "sk-testFAKE0000000000000000"\n')
+        done = self._run_scanner()
+        self.assertEqual(1, done.returncode,
+                         "abbreviated commit headers must not degrade the "
+                         "scan:\n" + done.stdout + done.stderr)
+        self.assertIn("api-key-sk", done.stdout)
 
 
 if __name__ == "__main__":
