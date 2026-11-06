@@ -39,10 +39,13 @@ Design decisions (set by the controller 2026-11-07, implemented as-is):
   collapse into one deduped finding (quality-audit fix, 2026-11-07).
 
 Output-shape defenses (quality-audit fix, 2026-11-07): the git command
-pins --pretty=medium and the diff prefixes (-c diff.noprefix / mnemonic /
-srcPrefix / dstPrefix) so ambient user config cannot change the output
-shape the parser depends on (format.pretty=oneline used to silence the
-scanner into a false "clean"); --no-ext-diff is belt-and-suspenders (git
+pins --pretty=medium, --no-textconv and the diff prefixes (-c
+diff.noprefix / mnemonic / srcPrefix / dstPrefix) so ambient user config
+and .gitattributes filters cannot change the output shape or the patch
+content the parser depends on (format.pretty=oneline used to silence the
+scanner into a false "clean"; textconv filters used to replace committed
+content in the patch body, scanning a planted key clean);
+--no-ext-diff is belt-and-suspenders (git
 log runs external diff drivers only on an explicit --ext-diff; verified
 not invoked with the flag removed); --no-abbrev-commit keeps the COMMIT
 column at the full 40-hex sha regardless of log.abbrevCommit / core.abbrev
@@ -54,11 +57,12 @@ timeout so a hung git cannot hang CI.
 
 Known non-coverage (accepted for this task): commit messages (see above),
 binary-file contents ("Binary files ... differ" lines carry no text), and
-anything not reachable via `git log --all -p` -- concretely, a secret
-introduced only in a merge resolution does not appear in this output
-(verified on this git). Exit 0 therefore certifies "no secrets reachable
-by git log --all -p", NOT the whole history; any future CI check built on
-this tool must not be trusted past that boundary.
+anything not reachable via the pinned `git log --all -p --no-textconv`
+output -- concretely, a secret introduced only in a merge resolution does
+not appear in this output (verified on this git). Exit 0 therefore
+certifies "no secrets reachable by that pinned output", NOT the whole
+history; any future CI check built on this tool must not be trusted past
+that boundary.
 """
 
 import argparse
@@ -167,7 +171,12 @@ def run_git_log(repo):
     # dstPrefix config. --no-ext-diff is belt-and-suspenders: git log runs
     # external diff drivers only on an explicit --ext-diff (verified: not
     # invoked with this flag removed), so this closes an already-shut
-    # door. --no-abbrev-commit keeps the COMMIT column at the full 40-hex
+    # door. --no-textconv is load-bearing, not belt-and-suspenders:
+    # porcelain git log -p applies .gitattributes-driven textconv filters
+    # BY DEFAULT, and a GPG/office-doc textconv setup replaced committed
+    # content in the patch body (+TEXTCONV-REPLACED-THIS-CONTENT instead
+    # of the real line), scanning a planted key clean, until this pin
+    # landed. --no-abbrev-commit keeps the COMMIT column at the full 40-hex
     # sha no matter the user's log.abbrevCommit / core.abbrev: a 4-hex
     # sha can collide across commits and collapse the dedupe.
     # --no-color is the same defense class: a user's color.ui=always
@@ -180,7 +189,7 @@ def run_git_log(repo):
         "-c", "diff.dstPrefix=b/",
         "log", "--all", "-p",
         "--no-color", "--pretty=medium", "--no-ext-diff",
-        "--no-abbrev-commit",
+        "--no-abbrev-commit", "--no-textconv",
     ]
     try:
         proc = subprocess.run(cmd, stdout=subprocess.PIPE,
