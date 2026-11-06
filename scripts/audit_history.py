@@ -26,10 +26,24 @@ Design decisions (set by the controller 2026-11-07, implemented as-is):
   synthetic `git log -p` text directly and fast; main() does subprocess +
   IO only.
 - Output: one line per hit,
-  PATTERN <name> | COMMIT <sha> | FILE <path> | <excerpt up to 100 chars>.
+  PATTERN <name> | COMMIT <sha> | FILE <path> | <excerpt: window around
+  the matched span, ~40 chars either side, ellipses where trimmed>.
   Identical (pattern, commit, file, excerpt) tuples are reported once; the
   same content in different commits is reported per commit (history
-  matters for cleaning).
+  matters for cleaning). Every match on a line is reported (not just the
+  first), and the excerpt always contains the matched span, so a secret
+  far into a long line is still visible and two distinct secrets cannot
+  collapse into one deduped finding (quality-audit fix, 2026-11-07).
+
+Output-shape defenses (quality-audit fix, 2026-11-07): the git command
+pins --pretty=medium and the diff prefixes (-c diff.noprefix / mnemonic /
+srcPrefix / dstPrefix) so ambient user config cannot change the output
+shape the parser depends on (format.pretty=oneline used to silence the
+scanner into a false "clean"); --no-ext-diff keeps a user's diff.external
+out of the patch text; scan_log_text() additionally refuses patch content
+with no `commit <sha>` headers (ScanError -> exit 2) so any future shape
+surprise is loud, never silent; and the git call has a 120s timeout so a
+hung git cannot hang CI.
 
 Known non-coverage (accepted for this task): commit messages (see above),
 binary-file contents ("Binary files ... differ" lines carry no text), and
@@ -44,9 +58,19 @@ from collections import namedtuple
 
 Finding = namedtuple("Finding", ["pattern", "commit", "file", "excerpt"])
 
-_EXCERPT_MAX = 100
+# Excerpt window: chars of context kept on each side of the matched span
+# (clamped to the line bounds, ellipses where trimmed). The match itself is
+# always fully inside the excerpt.
+_EXCERPT_RADIUS = 40
 
 _COMMIT_RE = re.compile(r"^commit ([0-9a-f]{7,40})(?:\s|$)")
+
+# File-path lines are trusted only in the exact shape git emits: the two
+# dashes/plusses, a space, then a known prefix. A removed source line that
+# merely starts with "-- " (SQL comments, YAML) renders as `--- <text>` and
+# used to be taken for a path line, poisoning the FILE column (fixed
+# 2026-11-07). a/ b/ are pinned on the git command line (see run_git_log).
+_AB_PATH_LINE_RE = re.compile(r"^(?:---|\+\+\+) (?:a/|b/|/dev/null)")
 
 # Each entry: (report name, compiled regex). Rationale for the non-obvious
 # shapes lives inline. All matching runs on the raw patch line (diff marker
@@ -97,12 +121,32 @@ def run_git_log(repo):
     Raises ScanError with the git stderr embedded, so the caller can print
     a loud message naming the problem instead of reporting a false "clean".
     """
-    # --no-color is defensive: a user's color.ui=always would corrupt parsing.
-    cmd = ["git", "-C", repo, "log", "--all", "-p", "--no-color"]
+    # Ambient-config defenses (quality-audit fix, 2026-11-07): a command
+    # line --pretty beats any format.pretty config (oneline output has no
+    # `commit <sha>` headers and used to silence the scanner entirely),
+    # the -c diff.* pins force the standard a/ b/ path-line prefixes no
+    # matter the user's diff.noprefix / mnemonicPrefix / srcPrefix /
+    # dstPrefix config, and --no-ext-diff keeps a user's diff.external
+    # config out of the patch text. --no-color is the same defense class:
+    # a user's color.ui=always would corrupt parsing.
+    cmd = [
+        "git", "-C", repo,
+        "-c", "diff.noprefix=false",
+        "-c", "diff.mnemonicPrefix=false",
+        "-c", "diff.srcPrefix=a/",
+        "-c", "diff.dstPrefix=b/",
+        "log", "--all", "-p",
+        "--no-color", "--pretty=medium", "--no-ext-diff",
+    ]
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=120)
     except FileNotFoundError:
         raise ScanError("git executable not found on PATH") from None
+    except subprocess.TimeoutExpired:
+        raise ScanError(
+            "git log for repo {!r} timed out after 120s; aborting instead "
+            "of hanging CI".format(repo)) from None
     if proc.returncode != 0:
         git_stderr = proc.stderr.decode("utf-8", errors="replace").strip()
         raise ScanError("git log failed for repo {!r} (exit {}): {}".format(
@@ -124,22 +168,41 @@ def _strip_ab_prefix(path):
     return path
 
 
+def _excerpt_around(raw_line, match):
+    """Window of raw_line around the matched span (~40 chars either side).
+
+    Clamped to the line bounds; ellipses mark trimmed sides. The matched
+    span is always fully inside the excerpt, so the evidence always shows
+    what fired, however far into the line it sits.
+    """
+    start = max(0, match.start() - _EXCERPT_RADIUS)
+    end = min(len(raw_line), match.end() + _EXCERPT_RADIUS)
+    excerpt = raw_line[start:end].strip()
+    if start > 0:
+        excerpt = "..." + excerpt
+    if end < len(raw_line):
+        excerpt = excerpt + "..."
+    return excerpt
+
+
 def _scan_line(raw_line, commit, path, findings, seen):
-    """Match every pattern against one patch line; append deduped findings."""
+    """Match every pattern against one patch line; append deduped findings.
+
+    Every match on the line is reported (finditer, not just the first),
+    each with an excerpt built around its own matched span: distinct
+    secrets on one line, or on lines sharing a long prefix, can neither
+    hide behind each other nor collapse in the dedupe.
+    """
     if commit is None or not raw_line.strip():
         return
-    excerpt = raw_line.lstrip("+-").strip()
-    if not excerpt:
-        return
     for name, regex in PATTERNS:
-        if not regex.search(raw_line):
-            continue
-        trimmed = excerpt[:_EXCERPT_MAX]
-        key = (name, commit, path, trimmed)
-        if key in seen:
-            continue
-        seen.add(key)
-        findings.append(Finding(name, commit, path, trimmed))
+        for match in regex.finditer(raw_line):
+            excerpt = _excerpt_around(raw_line, match)
+            key = (name, commit, path, excerpt)
+            if key in seen:
+                continue
+            seen.add(key)
+            findings.append(Finding(name, commit, path, excerpt))
 
 
 def scan_log_text(text):
@@ -150,34 +213,55 @@ def scan_log_text(text):
     path lines). Only patch-body lines and path lines are pattern-scanned;
     everything else is git metadata or commit-message text (design
     decision 1). Paths are best-effort: quoted paths with spaces fall back
-    to the ---/+++ lines, which follow every diff --git line anyway.
+    to the ---/+++ lines, which follow every diff --git line anyway, and a
+    path is trusted only from `--- / +++` lines with a/ b/ /dev/null
+    prefixes (_AB_PATH_LINE_RE) so removed content like `-- sql comments`
+    cannot poison the FILE column.
+
+    Tripwire (quality-audit fix, 2026-11-07): patch lines with zero commit
+    headers means the text is not in the expected --pretty=medium shape
+    (e.g. a format.pretty=oneline config leaked past the command-line pin,
+    or a future git change altered the shape). Raise ScanError so the run
+    exits 2 instead of reporting a false "clean".
     """
     findings = []
     seen = set()
     commit = None
     path = None
+    patch_lines = 0
+    commit_headers = 0
     for raw in text.split("\n"):
         line = raw.rstrip("\r")
         commit_match = _COMMIT_RE.match(line)
         if commit_match:
+            commit_headers += 1
             commit, path = commit_match.group(1), None
             continue
         if line.startswith("diff --git "):
+            patch_lines += 1
             path = _path_from_diff_git_line(line)
             _scan_line(line, commit, path, findings, seen)
             continue
-        if line.startswith(("--- ", "+++ ")):
+        if _AB_PATH_LINE_RE.match(line):
+            patch_lines += 1
             new_path = _strip_ab_prefix(line[4:])
             if new_path and new_path != "/dev/null":
                 path = new_path
             _scan_line(line, commit, path, findings, seen)
             continue
         if line[:1] in ("+", "-"):
+            patch_lines += 1
             _scan_line(line, commit, path, findings, seen)
             continue
         # Everything else (Author/Date headers, index/mode lines, hunk @@
         # headers, 4-space-indented commit messages) is git metadata or
         # message text: not committed file content, not scanned.
+    if patch_lines and not commit_headers:
+        raise ScanError(
+            "git log output has {} patch line(s) but no 'commit <sha>' "
+            "headers; output shape is not the expected --pretty=medium "
+            "(check format.pretty / --pretty config or overrides)".format(
+                patch_lines))
     return findings
 
 
@@ -197,12 +281,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         log_text = run_git_log(args.repo)
+        findings = scan_log_text(log_text)
     except ScanError as exc:
+        # Covers both subprocess failures and the scan_log_text tripwire
+        # (patch content without commit headers): never a silent "clean".
         print("ERROR: {}".format(exc), file=sys.stderr)
         print("Exiting 2: the scan did NOT run; this is not a clean result.",
               file=sys.stderr)
         return 2
-    findings = scan_log_text(log_text)
     for finding in findings:
         print("PATTERN {} | COMMIT {} | FILE {} | {}".format(
             finding.pattern, finding.commit, finding.file, finding.excerpt))
