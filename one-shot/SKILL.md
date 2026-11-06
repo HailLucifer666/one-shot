@@ -1,5 +1,6 @@
 ---
 name: one-shot
+version: 0.1.5
 description: Autonomous spec-to-ship builder. Use whenever the user supplies a PRD, MVP, SOW, tech stack, spec or detailed idea and wants a complete, working, verified project (app, website, landing page, slides, game, document) delivered in one run with no back-and-forth fixing. Also use when the user says one-shot, build this end to end, just ship it, or complains about AI slop, endless iterations, or broken first drafts. Plans, builds in tested slices, self-reviews, and runs a security and quality release gate before reporting done.
 ---
 
@@ -13,7 +14,7 @@ Goal: deliver a finished, working, verified project on the first pass. Spend eff
    - LEAN: strong frontier model. Larger slices, one self-review per slice.
    - STANDARD: mid-tier or unknown model (default). Test and review after every slice.
    - STRICT: small, free or local model. Tiny slices (under about 150 changed lines), re-read SPEC.md before every slice, tick every checklist item in writing.
-2. Create `one-shot-work/` using the files in `templates/`: SPEC.md, STACK.md, PLAN.md, PROGRESS.md, ASSUMPTIONS.md. Create BLOCKERS.md only if needed. Fill PROGRESS.md's first line now: `Skill: one-shot | Rigor: <level> | Output type: <type> | Gate: not run`.
+2. Create `one-shot-work/` using the templates `templates/SPEC.md`, `templates/STACK.md`, `templates/PLAN.md`, `templates/PROGRESS.md`, `templates/ASSUMPTIONS.md`. Create BLOCKERS.md only if needed. Fill PROGRESS.md's first line now: `Skill: one-shot | Rigor: <level> | Output type: <type> | Gate: not run`.
 3. State lives in these files, not in chat memory. After any context reset, read PROGRESS.md's first line first (it carries the skill, rigor, output type and gate status), then the rest of the file, and continue the pipeline.
 4. LITE: if the output is a single file or under about 200 lines, skip PLAN.md and STACK.md, ask at most 5 questions in one round, build in one slice, and still run a self-review and a run-path check.
 
@@ -46,7 +47,7 @@ Goal: deliver a finished, working, verified project on the first pass. Spend eff
 6. Regression rule: all earlier tests must still pass. If one breaks, fix it before anything else.
 7. Before marking a slice done, verify on disk that the files it claims exist are really there (list them). A slice whose files are absent is not done - tick nothing.
 8. Self-review (section 5). Fix. Update PROGRESS.md.
-- Retry cap: same failure three times means write it to BLOCKERS.md, try one genuinely different approach, then ask the user.
+- Retry cap: same failure three times means write it to BLOCKERS.md, try one genuinely different approach, then ask the user - or, if no user is reachable, take the safest remaining option, record it in BLOCKERS.md, and put it at the top of the final report.
 
 ## 5. Self-review (after each slice and at the end)
 Review as four people, in writing, as short findings:
@@ -66,7 +67,7 @@ Load only what the output needs.
 - Full stack: both
 - Choosing technology: `modules/stack.md`
 - Slides, documents, games, media: no module yet. Apply sections 1 to 6 with one acceptance criterion per slide, section or level.
-- If design or engineering skills such as frontend-design or UI UX Pro Max are installed, read the relevant ones before building UI and apply them. Name the ones used in the final report. The user's brief wins any conflict.
+- If design or engineering skills such as `frontend-design` or `ui-ux-pro-max` are installed, read the relevant ones before building UI and apply them. Name the ones used in the final report. The user's brief wins any conflict.
 
 ## 8. Rules
 - Smallest correct change. Delete dead code. Reuse existing patterns. Justify each new dependency in one line.
