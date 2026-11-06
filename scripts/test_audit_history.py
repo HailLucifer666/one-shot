@@ -83,6 +83,35 @@ scan_log_text quoted branch disabled, quoted diff --git handling kept)
 stayed green: the two quoted-path setters redundantly back each other
 up, which is exactly the ---/+++ correction the scanner docstring
 describes.
+
+Third review round on dca7468, 2026-11-07 — watched red first:
+- test_quoted_content_line_does_not_poison_file_column:
+  "AssertionError: 'notes.sql' != 'done'" (the round-2 quoted regex
+  accepted any quoted body, so a removed `-- "done"` content line
+  poisoned the FILE column — the round-1 defect reopened through the
+  new quoted branch).
+- test_abbreviated_commit_headers_still_scan (strengthened with a
+  full-sha assertion): "AssertionError: 'c724996a...' not found in
+  '... | COMMIT c724 | ...'" (the COMMIT column carried the 4-hex
+  abbreviation; --no-abbrev-commit now pins the full sha).
+- test_quoted_devnull_sides_never_set_the_path: guard, green on arrival
+  by design — pins the quoted-/dev/null behavior through the tightening
+  (a quoted /dev/null side matches via the /dev/null alternation and is
+  skipped as a path setter by the new_path != "/dev/null" guard; the
+  real filename wins on both sides of the pair).
+
+Implementation note: the first cut of the tightened regex dropped the
+capturing group entirely ("(?:...)" everywhere), which made
+quoted_match.group(1) raise IndexError — the two quoted unit tests
+errored, and the cafe e2e failed with EMPTY stdout behind a rc==1 that
+was Python's unhandled-exception exit code, not the findings exit. The
+suite caught it before commit; the shipped regex captures the validated
+body: "((?:a|b)/.*|/dev/null)".
+
+Mutation probe, 2026-11-07: _QUOTED_PATH_LINE_RE reverted to the loose
+round-2 form -> test_quoted_content_line_does_not_poison_file_column
+failed with "AssertionError: 'notes.sql' != 'done'" (poisoning
+reappears); restored -> green.
 """
 
 import io
@@ -355,6 +384,72 @@ class ScanLogTextUnitTests(unittest.TestCase):
                          "the same text with a commit header must scan, "
                          "not raise")
 
+    def test_quoted_content_line_does_not_poison_file_column(self):
+        # Regression 2026-11-07 round 3 (watched red): the quoted
+        # path-line regex accepted ANY quoted body, so a removed content
+        # line shaped `-- "done"` (SQL comment quoting an identifier)
+        # rendered as `--- "done"` and matched, poisoning the FILE column
+        # to "done" for the rest of the diff -- the round-1 defect
+        # reopened through the new quoted branch (reviewer reproduced at
+        # unit level: file='done'). The quoted body now requires the same
+        # a/ b/ /dev/null prefix set as the plain form, so the line falls
+        # through to the patch-body branch and is scanned as removed
+        # content under the real filename.
+        text = "\n".join([
+            "commit " + SHA_A,
+            "diff --git a/notes.sql b/notes.sql",
+            "--- a/notes.sql",
+            "+++ b/notes.sql",
+            "@@ -1,2 +1,2 @@",
+            "--- \"done\"",
+            "+SELECT 1;",
+            "+api_key = \"fakekeyvalue123\"",
+            "",
+        ])
+        findings = self._scan(text)
+        self.assertEqual(["api-key-literal"], [f.pattern for f in findings])
+        self.assertEqual("notes.sql", findings[0].file,
+                         "removed '-- \"done\"' content must not poison "
+                         "FILE, got: {}".format(findings[0].file))
+
+    def test_quoted_devnull_sides_never_set_the_path(self):
+        # Guard, 2026-11-07 round 3: pins the intended behavior for a
+        # quoted /dev/null on BOTH sides of a /dev/null rename pair (git
+        # never quotes pure-ASCII /dev/null in practice; this pins the
+        # parser if a git version ever does). Observed behavior, stated
+        # per review request: a quoted /dev/null side matches the
+        # tightened quoted regex via the /dev/null alternation and is then
+        # skipped as a path setter by the same new_path != "/dev/null"
+        # guard the plain form uses, so the real filename from the other
+        # side wins and no finding ever reports FILE /dev/null. Green on
+        # arrival by design: it pins behavior that must survive the
+        # round-3 regex tightening.
+        created = "\n".join([
+            "commit " + SHA_A,
+            "diff --git \"a/caf\\303\\251.md\" \"b/caf\\303\\251.md\"",
+            "--- \"/dev/null\"",
+            "+++ \"b/caf\\303\\251.md\"",
+            "@@ -0,0 +1,1 @@",
+            "+api_key = \"fakekeyvalue123\"",
+            "",
+        ])
+        deleted = "\n".join([
+            "commit " + SHA_B,
+            "diff --git \"a/caf\\303\\251.md\" \"b/caf\\303\\251.md\"",
+            "--- \"a/caf\\303\\251.md\"",
+            "+++ \"/dev/null\"",
+            "@@ -1,1 +0,0 @@",
+            "-api_key = \"fakekeyvalue123\"",
+            "",
+        ])
+        for text in (created, deleted):
+            findings = self._scan(text)
+            self.assertEqual(["api-key-literal"],
+                             [f.pattern for f in findings])
+            self.assertEqual("caf\u00e9.md", findings[0].file,
+                             "/dev/null side must be skipped as a path "
+                             "setter, got: {}".format(findings[0].file))
+
 
 class MainUnitTests(unittest.TestCase):
     """main()-level error mapping that needs no git subprocess."""
@@ -494,14 +589,24 @@ class EndToEndTests(unittest.TestCase):
         # the reviewer allowed 2 as tolerance, but a test accepting 2
         # could never fail, i.e. could never catch this widening
         # regressing; a future exit 2 here IS the defect re-appearing.
+        # Round 3 (watched red): --no-abbrev-commit now pins the COMMIT
+        # column to the full 40-hex sha regardless of log.abbrevCommit /
+        # core.abbrev (a 4-hex sha can collide across commits and collapse
+        # the dedupe); the {4,40} header regex still accepts full shas.
         self._git("config", "log.abbrevCommit", "true")
         self._git("config", "core.abbrev", "4")
         self._commit_file("note.md", 'key = "sk-testFAKE0000000000000000"\n')
+        full_sha = self._git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(40, len(full_sha), full_sha)
         done = self._run_scanner()
         self.assertEqual(1, done.returncode,
                          "abbreviated commit headers must not degrade the "
                          "scan:\n" + done.stdout + done.stderr)
         self.assertIn("api-key-sk", done.stdout)
+        self.assertIn(full_sha, done.stdout,
+                      "COMMIT column must carry the full 40-hex sha even "
+                      "under log.abbrevCommit / core.abbrev:\n"
+                      + done.stdout)
 
 
 if __name__ == "__main__":
