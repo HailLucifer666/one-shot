@@ -58,6 +58,15 @@ class ValidateSkill(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("templates/", out)
 
+    def test_missing_version_fails(self):
+        # v0.1.5 (HANDOFF 4.3): the version field is required frontmatter
+        sk = self.skill / "SKILL.md"
+        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.1.5\n", ""),
+                      encoding="utf-8")
+        code, out = self.run_validator()
+        self.assertEqual(code, 1)
+        self.assertIn("version", out)
+
     def test_oversized_skill_fails(self):
         sk = self.skill / "SKILL.md"
         sk.write_text(sk.read_text(encoding="utf-8") + "\n" * 100, encoding="utf-8")

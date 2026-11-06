@@ -11,7 +11,7 @@ if not m:
     errors.append("SKILL.md: missing YAML frontmatter")
 else:
     fm = m.group(1)
-    for key in ("name", "description"):
+    for key in ("name", "description", "version"):
         if not re.search(rf"^{key}:\s*\S", fm, re.M):
             errors.append(f"SKILL.md: frontmatter missing {key}")
 lines = len(text.splitlines())

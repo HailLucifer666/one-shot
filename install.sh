@@ -57,6 +57,7 @@ if [ "$VERIFY" = 1 ]; then
     exit 1
   fi
   echo "VERIFY: OK - $SRC_COUNT files match, fingerprint present"
+  echo "installed version: $(grep '^version:' "$TARGET/one-shot/SKILL.md" 2>/dev/null | head -1 | sed 's/^version:[[:space:]]*//' || echo unknown)"
   echo "installed sha256 (SKILL.md): $(sha256sum "$TARGET/one-shot/SKILL.md" | cut -c1-12)"
   exit 0
 fi
@@ -65,5 +66,6 @@ mkdir -p "$TARGET"
 rm -rf "$TARGET/one-shot"
 cp -R "$SOURCE_DIR" "$TARGET/one-shot"
 echo "Installed one-shot to $TARGET/one-shot"
+echo "installed version: $(grep '^version:' "$TARGET/one-shot/SKILL.md" 2>/dev/null | head -1 | sed 's/^version:[[:space:]]*//' || echo unknown)"
 echo "installed sha256 (SKILL.md): $(sha256sum "$TARGET/one-shot/SKILL.md" | cut -c1-12)"
 sh "$0" --verify "$TARGET"
