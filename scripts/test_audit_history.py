@@ -25,6 +25,29 @@ Probe for the tightened respan test, 2026-11-07: vendor-respan
 re.IGNORECASE dropped (case-sensitive) -> test_respan_matches_both_cases
 failed as expected (uppercase form produced no finding); restored ->
 green. This is the discrimination the two separate planted lines buy.
+
+Watched-red regressions for the quality-audit fixes, 2026-11-07 — each
+written first and confirmed failing against the unfixed scanner:
+- test_repo_pretty_oneline_config_still_scans:
+  "AssertionError: 1 != 0" (with format.pretty=oneline and a planted
+  sk- key, the scanner exited 0 — the silent false clean).
+- test_removed_sql_comment_line_does_not_poison_file_column:
+  "AssertionError: 'FILE query.sql | ' not found in 'PATTERN
+  api-key-literal | COMMIT e31f75b7... | FILE old sql comment was here
+  | ...'" (FILE column carried the removed SQL comment text).
+- test_two_distinct_secrets_on_one_long_line_both_reported:
+  "AssertionError: 2 != 1" (excerpt was line[:100]; the lone finding's
+  excerpt was 99 padding chars containing neither key).
+
+Mutation probes, 2026-11-07: (a) removed --pretty=medium from the git
+command -> test_repo_pretty_oneline_config_still_scans failed with
+"AssertionError: 1 != 2" and stderr showing the new tripwire ("git log
+output has 4 patch line(s) but no 'commit <sha>' headers; output shape
+is not the expected --pretty=medium") — the tripwire turned the old
+silent exit 0 into a loud exit 2; restored -> green. (b) tripwire
+disabled (pin intact) -> all 19 green: the pin is the primary defense
+for the known shape, the tripwire the backstop whose fail-loud behavior
+probe (a) demonstrated live. Restored -> green.
 """
 
 import os
@@ -209,6 +232,31 @@ class ScanLogTextUnitTests(unittest.TestCase):
                    if f.pattern == "api-key-sk"}
         self.assertEqual({SHA_A, SHA_B}, commits)
 
+    def test_two_distinct_secrets_on_one_long_line_both_reported(self):
+        # Regression 2026-11-07 (watched red): the excerpt was line[:100],
+        # so a secret past char 100 never appeared in its own finding's
+        # evidence, and dedupe keyed on that truncation collapsed distinct
+        # secrets sharing a long prefix into one finding. The excerpt must
+        # be a window around the matched span, and every match on the line
+        # must be reported.
+        padding = "p" * 120
+        line = ("+" + padding + " sk-AAAA1111AAAAAAAAAAAAAAAA "
+                + padding + " sk-BBBB2222BBBBBBBBBBBBBBBB")
+        self.assertGreater(len(line), 100)
+        text = _commit_block(SHA_A, "long.md", ["@@ -1,1 +1,2 @@", line])
+        sk = [f for f in self._scan(text) if f.pattern == "api-key-sk"]
+        self.assertEqual(2, len(sk),
+                         "two distinct sk- keys on one line must yield "
+                         "two findings, got: {}".format(sk))
+        first = [f for f in sk if "sk-AAAA1111AAAAAAAA" in f.excerpt]
+        second = [f for f in sk if "sk-BBBB2222BBBBBBBB" in f.excerpt]
+        self.assertEqual(1, len(first),
+                         "first key's finding must show the first key")
+        self.assertEqual(1, len(second),
+                         "second key's finding must show the second key")
+        self.assertNotEqual(first[0].excerpt, second[0].excerpt,
+                            "distinct secrets must dedupe separately")
+
 
 class EndToEndTests(unittest.TestCase):
     """Scanner as a subprocess against throwaway git repos: exit codes."""
@@ -265,6 +313,43 @@ class EndToEndTests(unittest.TestCase):
         done = self._run_scanner(repo=plain)
         self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
         self.assertIn("not a git repository", done.stderr)
+
+    def test_repo_pretty_oneline_config_still_scans(self):
+        # Regression 2026-11-07 (CRITICAL, watched red): with
+        # format.pretty=oneline, `git log --all -p` printed one-liners with
+        # no `commit <sha>` headers; the parser recognised no commits,
+        # skipped every patch line behind the commit-is-None guard, and the
+        # scanner exited 0 on a repo full of secrets. The command now pins
+        # --pretty=medium (command line beats config), and scan_log_text()
+        # raises ScanError if patch content ever appears without commit
+        # headers, so a future output-shape surprise exits 2, never clean.
+        cfg = self._git("config", "format.pretty", "oneline")
+        self.assertEqual(cfg.returncode, 0, cfg.stderr)
+        self._commit_file("note.md", 'key = "sk-testFAKE0000000000000000"\n')
+        done = self._run_scanner()
+        self.assertEqual(1, done.returncode,
+                         "oneline format must not silence the scanner:\n"
+                         + done.stdout + done.stderr)
+        self.assertIn("api-key-sk", done.stdout)
+        self.assertIn("sk-testFAKE", done.stdout)
+
+    def test_removed_sql_comment_line_does_not_poison_file_column(self):
+        # Regression 2026-11-07 (watched red): a removed line whose content
+        # starts with "-- " (SQL comment) renders as `--- <text>` in the
+        # patch; the parser took any `--- ` line for a file-path line, so
+        # the FILE column reported the comment text for later findings in
+        # the same diff. Paths are now accepted only from
+        # `--- / +++ (a/|b/|/dev/null)`, with the a/ b/ prefixes pinned on
+        # the git command line (-c diff.*Prefix / noprefix / mnemonic).
+        self._commit_file("query.sql", "-- old sql comment was here\nSELECT 1;\n")
+        self._commit_file("query.sql", 'SELECT 1;\napi_key = "fakekeyvalue123"\n')
+        done = self._run_scanner()
+        self.assertEqual(1, done.returncode, done.stdout + done.stderr)
+        self.assertIn("api-key-literal", done.stdout)
+        self.assertIn("FILE query.sql | ", done.stdout)
+        self.assertNotIn("old sql comment was here", done.stdout,
+                         "comment text must not leak into the FILE column "
+                         "or any finding:\n" + done.stdout)
 
 
 if __name__ == "__main__":
