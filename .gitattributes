@@ -1,1 +1,5 @@
+# Benchmark packs must stay byte-identical to the working copies: the C6
+# sha256 guard and the recorded tool shas depend on it.
+benchmark-hard/** -text
+# Shell scripts must stay LF: CRLF endings break bash (v3 park/restore).
 *.sh text eol=lf
