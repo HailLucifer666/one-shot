@@ -13,3 +13,8 @@ one-shot-work/
 
 # /brag launch-video output — never part of the published repo
 brag-output/
+
+# FIX-PLAN Phase 1.5 (2026-11-07): backup bundles and container-level run dirs
+# must never land inside the repo, even by accident from a future runs-dir default
+*.bundle
+_runs*/
