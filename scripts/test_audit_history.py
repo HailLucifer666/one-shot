@@ -20,6 +20,11 @@ private-ip loosened to any dotted quad -> test_innocent_lines_produce_
 no_findings failed as expected (public 203.0.113.9 got flagged); restored
 -> green. Both mutations were verified applied (grep for the pattern name
 in the scanner) before trusting the red.
+
+Probe for the tightened respan test, 2026-11-07: vendor-respan
+re.IGNORECASE dropped (case-sensitive) -> test_respan_matches_both_cases
+failed as expected (uppercase form produced no finding); restored ->
+green. This is the discrimination the two separate planted lines buy.
 """
 
 import os
@@ -62,7 +67,7 @@ SHA_B = "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222"
 LOG_WITH_HITS = _commit_block(
     SHA_A, "config/settings.md",
     [
-        "@@ -1,2 +1,10 @@",
+        "@@ -1,2 +1,11 @@",
         " unchanged context line",
         '+api_key = "fakekeyvalue123"',
         '+base_url = "https://fake.example.invalid"',
@@ -72,7 +77,11 @@ LOG_WITH_HITS = _commit_block(
         "+vpn endpoint 192.168.1.50 and old gateway 10.0.0.5",
         r"+cache dir C:\Users\acarg\AppData\cache",
         "+docs mirrored from C:/Users/dev/notes",
-        "+we use RESPAN and respan.ai daily",
+        # Respan gets two SEPARATE lines, each carrying only one case form:
+        # one finding per excerpt, so a case-sensitive pattern fails the
+        # respan test (a combined line could not distinguish the two).
+        "+RESPAN endpoint",
+        "+respan.ai endpoint",
         "-stale line mentioning 172.16.5.4",
     ],
 )
@@ -132,10 +141,18 @@ class ScanLogTextUnitTests(unittest.TestCase):
         self.assertIn("base-url-literal", self._patterns(LOG_WITH_HITS))
 
     def test_respan_matches_both_cases(self):
-        self.assertIn("vendor-respan", self._patterns(LOG_WITH_HITS))
-        joined = " ".join(self._excerpts(LOG_WITH_HITS, "vendor-respan"))
-        self.assertIn("RESPAN", joined)
-        self.assertIn("respan.ai", joined)
+        # Two separate planted lines (see LOG_WITH_HITS): each excerpt
+        # carries exactly one case form, so a case-sensitive pattern fails
+        # here - one form goes unflagged. A single combined line (both
+        # forms on one line, one finding) could not distinguish the two.
+        upper = [e for e in self._excerpts(LOG_WITH_HITS, "vendor-respan")
+                 if "RESPAN" in e]
+        lower = [e for e in self._excerpts(LOG_WITH_HITS, "vendor-respan")
+                 if "respan.ai" in e]
+        self.assertEqual(1, len(upper),
+                         "uppercase RESPAN must produce its own finding")
+        self.assertEqual(1, len(lower),
+                         "lowercase respan.ai must produce its own finding")
 
     def test_private_ip_ranges_flagged(self):
         self.assertIn("private-ip", self._patterns(LOG_WITH_HITS))
