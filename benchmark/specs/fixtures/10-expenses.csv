@@ -1,0 +1,16 @@
+id,date,amount,currency,description
+E001,2026-01-05,"$1,200.50",USD,Conference tickets
+E002,05/01/2026,"₹45,000",INR,Team offsite venue
+E003,"Jan 5, 2026","1.234,56 €",EUR,Equipment deposit
+E001,2026-01-07,"$300",USD,Duplicate id — skip me
+E004,2026-01-08,"$99.99",USD,Books
+E005,2026-01-09,"₹12,500.75",INR,Travel advance
+E006,2026-01-10,"2.500,00 €",EUR,Venue catering
+E007,2026-01-11,,USD,Amount is missing
+E008,2026-01-12,"$150",GBP,Currency is unknown
+E009,,"€780,25",EUR,Date is missing
+E010,13/01/2026,"$1,000",USD,Workshop day
+E010,2026-01-14,"$1,000",USD,Duplicate id — skip me too
+E011,2026-01-15,"abc",USD,Amount is not a number
+E012,2026-02-30,"$50",USD,Date is impossible
+E013,"Jan 20, 2026","₹8,000",INR,Farewell gifts

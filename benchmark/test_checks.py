@@ -48,10 +48,32 @@ added (16/16 caught; never trust a new guard until breaking it goes red):
   M14 yaml/yml dropped from SCAN_EXTS        -> test_secret_in_yaml_fails
   M15 below-root-only skip reverted          -> test_lorem_under_root_named_build_fails
   M16 CTA-in-script MANUAL branch disabled   -> test_spa_button_is_manual_not_fail
+
+Pass 3, 2026-11-07, against the wave-2 scorers (specs 06-10) - one decisive
+check per scorer, all five caught, all five green again after revert (driver:
+probe script in the system temp dir, outside the repo; it verified each
+mutation applied and restored checks.py byte-exact):
+  M06 new Function pattern broken            -> Spec06.test_new_function_fails
+  M07 Date.now token dropped from the        -> Spec07.test_clean_timer_quotes_wall_clock_line
+     spec07 wall-clock scan
+  M08 sk- token dropped from spec08's        -> Spec08.test_secret_key_fails
+     secret pattern
+  M09 spec09 sha comparison forced True      -> Spec09.test_tampered_page_fails
+  M10 spec10 golden USD total 2300.49->2300.50 -> Spec10.test_golden_report_all_pass
+     (test_golden_recomputed_independently stayed green through M10 by design:
+     it pins the golden from literals, not from checks.py's constants.)
+Also caught by the CLI smoke, not a mutation: the spec 06/10 criterion text
+contains U+232B/U+20B9 which cp1252 cannot encode - the CLI crashed mid-run
+(6 of 10 lines, exit 1). main() now reconfigures stdout to backslashreplace;
+pinned deterministically by Cli.test_non_ascii_output_never_crashes_the_cli.
 """
 import contextlib
+import csv
+import datetime
 import importlib.util
 import io
+import json
+import os
 import re
 import shutil
 import subprocess
@@ -533,6 +555,538 @@ class Spec05(FixtureTest):
         self.assertTenPrinted(res)
 
 
+# ---------------------------------------------------------------- spec 06
+
+CALC_HTML = """<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>LedgerCalc</title>
+<style>button { min-width: 48px; }</style>
+</head>
+<body>
+<div id="display">0</div>
+<div id="history"></div>
+<button data-key="7">7</button><button data-key="+">+</button>
+<button data-key="=">=</button><button data-key="C">C</button>
+<button id="back">&#9003;</button><button id="sign">&plusmn;</button>
+<script>
+"use strict";
+let expr = "";
+function press(k) { expr += k; render(); }
+function equals() { display.textContent = evaluate(expr); }
+function evaluate(e) { return parseTokens(e); }
+function parseTokens(e) { return 0; }
+document.addEventListener("keydown", (ev) => { if (ev.key === "Enter") equals(); });
+</script>
+</body>
+</html>
+"""
+
+
+class Spec06(FixtureTest):
+    def test_clean_app_pass_and_manual_evidence(self):
+        res = self.run_checks("06", {"index.html": CALC_HTML})
+        self.assertTenPrinted(res)
+        self.assertVerdict(res, 1, "PASS", "no external references (denylist scan)")
+        self.assertVerdict(res, 2, "PASS", "denylist scan")
+        self.assertVerdict(res, 3, "MANUAL", "show 14, not 20")
+        self.assertVerdict(res, 4, "MANUAL", "0.30000000000000004")
+        self.assertVerdict(res, 5, "MANUAL", "5 ÷ 0")
+        self.assertVerdict(res, 6, "MANUAL", "220")
+        self.assertVerdict(res, 7, "MANUAL", "flips the sign")
+        self.assertVerdict(res, 8, "MANUAL", "history tape")
+        self.assertVerdict(res, 9, "MANUAL", "360px")
+        self.assertVerdict(res, 10, "MANUAL", "console")
+
+    def test_new_function_fails(self):
+        html = CALC_HTML.replace("function parseTokens(e) { return 0; }",
+                                 "function parseTokens(e) { return new Function('return 2 + 2')(); }")
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 2, "FAIL", "new Function")
+
+    def test_eval_fails(self):
+        html = CALC_HTML.replace("function parseTokens(e) { return 0; }",
+                                 "function parseTokens(e) { return eval(e); }")
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 2, "FAIL", "eval(")
+
+    def test_external_script_fails(self):
+        html = CALC_HTML.replace("<script>", '<script src="app.js">')
+        res = self.run_checks("06", {"index.html": html, "app.js": "press('1');"})
+        self.assertVerdict(res, 1, "FAIL", "app.js")
+
+    def test_second_html_fails(self):
+        res = self.run_checks("06", {"index.html": CALC_HTML, "about.html": "<p>hi</p>"})
+        self.assertVerdict(res, 1, "FAIL", "2 html files")
+
+    def test_no_html_all_manual(self):
+        res = self.run_checks("06", {"README.md": "x"})
+        self.assertTenPrinted(res)
+        for n in range(1, 11):
+            self.assertVerdict(res, n, "MANUAL")
+
+
+# ---------------------------------------------------------------- spec 07
+
+POMO_TAIL = """<script>
+"use strict";
+const WORK = 25 * 60;
+let remaining = WORK;
+let endsAt = null;
+function tick() {
+  remaining = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
+  render();
+}
+setInterval(tick, 250);
+</script>
+"""
+
+POMO_HTML = """<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Tempo</title>
+<style>#time { font-size: 3rem; }</style></head>
+<body>
+<div id="time">25:00</div><div id="phase">Work 1 of 4</div>
+<button id="start">Start</button><button id="pause">Pause</button>
+<button id="reset">Reset</button><button id="skip">Skip</button>
+""" + POMO_TAIL + """</body>
+</html>
+"""
+
+
+class Spec07(FixtureTest):
+    def test_clean_timer_quotes_wall_clock_line(self):
+        res = self.run_checks("07", {"index.html": POMO_HTML})
+        self.assertTenPrinted(res)
+        self.assertVerdict(res, 1, "PASS", "no external references (denylist scan)")
+        self.assertVerdict(res, 10, "MANUAL", "Date.now()")
+        self.assertIn("wall clock", res[10][1])
+
+    def test_ticks_only_never_autopasses_and_names_suspicion(self):
+        html = POMO_HTML.replace(POMO_TAIL, """<script>
+"use strict";
+let remaining = 1500;
+setInterval(() => { remaining -= 1; render(); }, 1000);
+</script>
+""")
+        res = self.run_checks("07", {"index.html": html})
+        self.assertVerdict(res, 10, "MANUAL", "may count interval ticks")
+        self.assertNotEqual(res[10][0], "PASS")
+
+    def test_external_script_fails(self):
+        html = POMO_HTML.replace("<script>", '<script src="timer.js">')
+        res = self.run_checks("07", {"index.html": html, "timer.js": "tick();"})
+        self.assertVerdict(res, 1, "FAIL", "timer.js")
+
+
+# ---------------------------------------------------------------- spec 08
+
+SPLIT_APP = '''#!/usr/bin/env python3
+"""SplitBird - tiny expense-splitting API."""
+import json
+import sqlite3
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+DB = sqlite3.connect("splitbird.db")
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("content-length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_error(400, "malformed JSON")
+            return
+        if body.get("amount", 0) < 0:
+            self.send_error(400, "amount must be positive")
+            return
+        self.send_response(201)
+        self.end_headers()
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+'''
+
+SPLIT_TESTS = "\n".join(
+    f"def test_{name}():\n    assert True\n" for name in
+    ("add_expense", "list_expenses", "balances", "settle",
+     "negative_amount_rejected", "unknown_currency_rejected",
+     "empty_payer_rejected", "malformed_json_rejected")) + "\n"
+
+SPLIT_README = """# SplitBird
+
+## Test
+
+    python -m pytest
+
+## Run
+
+    python app.py
+"""
+
+
+class Spec08(FixtureTest):
+    FULL = {"app.py": SPLIT_APP, "tests/test_api.py": SPLIT_TESTS,
+            "README.md": SPLIT_README}
+
+    def test_full_layout(self):
+        res = self.run_checks("08", self.FULL)
+        self.assertTenPrinted(res)
+        self.assertVerdict(res, 1, "PASS", "run command")
+        self.assertVerdict(res, 5, "MANUAL", "8 test function(s) in 1 file(s)")
+        self.assertVerdict(res, 6, "PASS", "denylist scan")
+        self.assertVerdict(res, 8, "MANUAL", "storage code")
+        self.assertVerdict(res, 4, "MANUAL", "B pays A 10")
+        self.assertIn("C pays A 40", res[4][1])
+        self.assertVerdict(res, 3, "MANUAL", "separate USD and EUR figures")
+        self.assertVerdict(res, 10, "MANUAL", "0.30000000000000004")
+
+    def test_three_tests_fails(self):
+        three = "\n".join(f"def test_{n}():\n    assert True\n" for n in ("a", "b", "c"))
+        files = dict(self.FULL)
+        files["tests/test_api.py"] = three
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 5, "FAIL", "only 3 test function(s) found; spec requires at least 8")
+
+    def test_secret_key_fails(self):
+        files = dict(self.FULL)
+        files["app.py"] = SPLIT_APP + 'API_KEY = "sk-abcdefghijklmnopqrstuvwx"\n'
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "FAIL", "secret-like literal")
+
+    def test_external_url_goes_manual(self):
+        files = dict(self.FULL)
+        files["app.py"] = SPLIT_APP + 'WEBHOOK = "https://api.external.example/v1"\n'
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "MANUAL", "URL literal found")
+
+    def test_readme_without_commands_fails(self):
+        files = dict(self.FULL)
+        files["README.md"] = "# SplitBird\n\nSee the docs folder for usage.\n"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 1, "FAIL", "names no test command")
+
+    def test_no_readme_fails(self):
+        files = dict(self.FULL)
+        del files["README.md"]
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 1, "FAIL", "README.md missing")
+
+
+# ---------------------------------------------------------------- spec 09
+
+STARTER = BENCH.parent / "benchmark-v3" / "starters" / "09-notes-app"
+
+
+class Spec09(FixtureTest):
+    def starter(self):
+        """Byte copies of the real starter - the manifest's recorded hashes hold."""
+        return {p.relative_to(STARTER).as_posix(): p.read_bytes()
+                for p in sorted(STARTER.rglob("*")) if p.is_file()}
+
+    def test_pristine_copy_passes_integrity(self):
+        files = self.starter()
+        files["data.json"] = b'{"nextId": 0, "notes": []}\n'
+        res = self.run_checks("09", files)
+        self.assertTenPrinted(res)
+        self.assertVerdict(res, 2, "PASS",
+                           "7/7 manifest files byte-identical (whitelist: server.js, "
+                           "tests/notes.test.js, NOTES.md)")
+        self.assertVerdict(res, 7, "PASS", "package.json byte-identical")
+        self.assertVerdict(res, 6, "FAIL", "test file has 12 test(s)")
+        self.assertVerdict(res, 8, "FAIL", "NOTES.md missing - the spec requires it")
+        self.assertVerdict(res, 3, "MANUAL", "Bug A (dates)")
+        self.assertVerdict(res, 4, "MANUAL", "Shopping ToDo list")
+        self.assertVerdict(res, 5, "MANUAL", "Bug C (delete)")
+        for n in (1, 9, 10):
+            self.assertVerdict(res, n, "MANUAL")
+
+    def test_tampered_page_fails(self):
+        files = self.starter()
+        files["public/index.html"] += b"<!-- tampered -->\n"
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 2, "FAIL", "public/index.html sha mismatch")
+        self.assertVerdict(res, 7, "PASS", "package.json byte-identical")
+
+    def test_deleted_listed_file_fails(self):
+        files = self.starter()
+        del files["public/styles.css"]
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 2, "FAIL", "manifest-listed file missing: public/styles.css")
+
+    def test_stray_file_fails(self):
+        files = self.starter()
+        files["new-file.txt"] = b"stray\n"
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 2, "FAIL", "unlisted file(s) present: new-file.txt")
+
+    def test_edited_manifest_fails_tamper_guard(self):
+        files = self.starter()
+        files["manifest.json"] = files["manifest.json"].replace(b"2b2a96f8", b"2b2a96f9", 1)
+        self.assertIn(b"2b2a96f9", files["manifest.json"])  # mutation applied
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 2, "FAIL", "manifest.json was edited - the tamper guard itself")
+        # c7 still verifies through the PRISTINE manifest, not the edited one
+        self.assertVerdict(res, 7, "PASS", "package.json byte-identical")
+
+    def test_whitelisted_change_still_passes(self):
+        files = self.starter()
+        files["server.js"] += b"\n// fixed the dayKey shift\n"
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 2, "PASS", "7/7 manifest files byte-identical")
+
+    def test_fifteen_tests_go_manual(self):
+        files = self.starter()
+        files["tests/notes.test.js"] += (b'\ntest("regression A", () => {});\n'
+                                         b'test("regression B", () => {});\n'
+                                         b'test("regression C", () => {});\n')
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 6, "MANUAL", "15 tests counted")
+        self.assertVerdict(res, 2, "PASS")
+
+    def test_missing_test_file_fails(self):
+        files = self.starter()
+        del files["tests/notes.test.js"]
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 6, "FAIL", "tests/notes.test.js missing")
+
+    def test_missing_notes_md_fails(self):
+        res = self.run_checks("09", self.starter())
+        self.assertVerdict(res, 8, "FAIL", "NOTES.md missing - the spec requires it")
+
+    def test_notes_sections_go_manual(self):
+        files = self.starter()
+        files["NOTES.md"] = ("# Notes\n\n## Bug A\nfile: server.js\n"
+                             "## Bug B\nroot cause\n## Bug C\nfix\n").encode("utf-8")
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 8, "MANUAL", "Bug A/B/C found")
+        self.assertVerdict(res, 2, "PASS")
+
+    def test_pristine_unreachable_goes_manual(self):
+        files = self.starter()
+        saved = checks.PRISTINE_STARTER
+        checks.PRISTINE_STARTER = BENCH / "definitely-not-here"
+        try:
+            res = self.run_checks("09", files)
+        finally:
+            checks.PRISTINE_STARTER = saved
+        self.assertVerdict(res, 2, "MANUAL", "pristine starter")
+
+
+# ---------------------------------------------------------------- spec 10
+
+FIXTURE = BENCH / "specs" / "fixtures" / "10-expenses.csv"
+
+GOLDEN_REPORT = {
+    "totals_by_currency": {"USD": 2300.49, "EUR": 3734.56, "INR": 65500.75},
+    "rows_by_currency": {"USD": 3, "EUR": 2, "INR": 3},
+    "skipped_duplicates": [{"row": 5, "id": "E001"}, {"row": 13, "id": "E010"}],
+    "invalid_rows": [
+        {"row": 9, "reason": "amount missing"},
+        {"row": 10, "reason": "unknown currency GBP"},
+        {"row": 11, "reason": "date missing"},
+        {"row": 14, "reason": "amount not a number"},
+        {"row": 15, "reason": "impossible date 2026-02-30"},
+    ],
+    "date_range": {"min": "2026-01-05", "max": "2026-01-20"},
+}
+
+TRANSFORM_PY = '''#!/usr/bin/env python3
+"""Expenses CSV -> JSON report. Standard library only."""
+import csv
+import json
+import sys
+
+
+def main(argv):
+    if len(argv) != 3:
+        print("usage: transform.py <in.csv> <out.json>", file=sys.stderr)
+        return 2
+    src, dst = argv[1], argv[2]
+    try:
+        handle = open(src, newline="", encoding="utf-8")
+    except OSError as exc:
+        print(f"cannot read {src}: {exc}", file=sys.stderr)
+        return 2
+    with handle:
+        rows = list(csv.DictReader(handle))
+    report = {"totals_by_currency": {}, "rows_by_currency": {},
+              "skipped_duplicates": [], "invalid_rows": [], "date_range": {}}
+    with open(dst, "w", encoding="utf-8") as out:
+        json.dump(report, out, indent=2)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+'''
+
+
+def _recompute_golden(text):
+    """Independent reference parse of the spec-10 CSV: the documented rules
+    (decimal-comma EUR, $ and rupee prefixes, DD/MM and month-name dates,
+    duplicate ids skipped, missing or unparseable fields invalid). Shares no
+    code with checks.py's golden constants."""
+    months = {m: i + 1 for i, m in enumerate(
+        "jan feb mar apr may jun jul aug sep oct nov dec".split())}
+
+    def amount(raw):
+        raw = (raw or "").strip()
+        if raw.startswith("$"):
+            return round(float(raw[1:].replace(",", "")), 2)
+        if raw.startswith("₹"):
+            return round(float(raw[1:].replace(",", "")), 2)
+        if raw.endswith("€"):
+            body = raw[:-1].strip().replace(".", "").replace(",", ".")
+            return round(float(body), 2)
+        raise ValueError("unknown amount format: " + raw)
+
+    def when(raw):
+        raw = (raw or "").strip()
+        m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", raw)
+        if m:
+            y, mo, d = (int(x) for x in m.groups())
+        else:
+            m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", raw)
+            if m:
+                d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            else:
+                m = re.fullmatch(r"([A-Za-z]{3}) (\d{1,2}), (\d{4})", raw)
+                if not m:
+                    return None
+                mo, d, y = months[m.group(1).lower()], int(m.group(2)), int(m.group(3))
+        try:
+            return datetime.date(y, mo, d).isoformat()
+        except ValueError:
+            return None
+
+    totals, counts, skipped, invalid, seen, days = {}, {}, [], [], set(), []
+    for i, row in enumerate(csv.DictReader(text.splitlines())):
+        n = i + 2   # header is row 1
+        rid = (row["id"] or "").strip()
+        if rid in seen:
+            skipped.append((n, rid))
+            continue
+        if not rid:
+            invalid.append((n, "missing id"))
+            continue
+        seen.add(rid)
+        try:
+            value = amount(row["amount"])
+        except (ValueError, AttributeError):
+            invalid.append((n, "amount missing or unparseable"))
+            continue
+        cur = (row["currency"] or "").strip()
+        if cur not in ("USD", "EUR", "INR"):
+            invalid.append((n, "currency missing or unknown"))
+            continue
+        day = when(row["date"])
+        if day is None:
+            invalid.append((n, "date missing or impossible"))
+            continue
+        totals[cur] = round(totals.get(cur, 0.0) + value, 2)
+        counts[cur] = counts.get(cur, 0) + 1
+        days.append(day)
+    return totals, counts, skipped, invalid, (min(days), max(days))
+
+
+class Spec10(FixtureTest):
+    def golden_files(self, overrides=None):
+        files = {"transform.py": TRANSFORM_PY,
+                 "expenses.csv": FIXTURE.read_bytes(),
+                 "report.json": json.dumps(GOLDEN_REPORT, indent=2)}
+        if overrides:
+            files.update(overrides)
+        return files
+
+    def test_golden_report_all_pass(self):
+        res = self.run_checks("10", self.golden_files())
+        self.assertTenPrinted(res)
+        self.assertVerdict(res, 1, "PASS", "all imports stdlib")
+        self.assertVerdict(res, 2, "MANUAL", "expect exit 0")
+        self.assertVerdict(res, 3, "PASS", "2300.49")
+        self.assertVerdict(res, 4, "PASS", "rows 5 (E001), 13 (E010)")
+        self.assertVerdict(res, 5, "PASS", "rows 9, 10, 11, 14, 15 all listed with reasons")
+        self.assertVerdict(res, 6, "PASS", "min 2026-01-05, max 2026-01-20")
+        self.assertVerdict(res, 7, "PASS", "totals match the golden")
+        self.assertVerdict(res, 8, "PASS", "exactly the five specified keys")
+        self.assertVerdict(res, 9, "PASS", "USD 3, EUR 2, INR 3")
+        self.assertVerdict(res, 10, "MANUAL", "explicit rules")
+
+    def test_wrong_total_fails_with_both_numbers(self):
+        report = json.loads(json.dumps(GOLDEN_REPORT))
+        report["totals_by_currency"]["USD"] = 2300.5
+        res = self.run_checks("10", self.golden_files({"report.json": json.dumps(report)}))
+        self.assertVerdict(res, 3, "FAIL", "USD total 2300.5 != golden 2300.49")
+        self.assertVerdict(res, 7, "MANUAL", "which amount format misparsed")
+        self.assertVerdict(res, 9, "PASS", "USD 3, EUR 2, INR 3")
+
+    def test_missing_report_all_manual(self):
+        files = self.golden_files()
+        del files["report.json"]
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 3, "MANUAL", "no report.json found in the run folder")
+        for n in (4, 5, 6, 7, 8, 9):
+            self.assertVerdict(res, n, "MANUAL")
+        self.assertVerdict(res, 10, "MANUAL")
+
+    def test_csv_mutated_goes_manual(self):
+        mutated = FIXTURE.read_bytes().replace(b"99.99", b"95.99")
+        self.assertNotEqual(mutated, FIXTURE.read_bytes())  # mutation applied
+        res = self.run_checks("10", self.golden_files({"expenses.csv": mutated}))
+        self.assertVerdict(res, 3, "MANUAL", "differs from the spec fixture")
+
+    def test_third_party_import_fails(self):
+        files = self.golden_files()
+        files["transform.py"] = TRANSFORM_PY.replace("import csv",
+                                                     "import pandas as pd\nimport csv")
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "FAIL", "non-stdlib import: pandas")
+
+    def test_extra_key_fails(self):
+        report = json.loads(json.dumps(GOLDEN_REPORT))
+        report["extra_key"] = 1
+        res = self.run_checks("10", self.golden_files({"report.json": json.dumps(report)}))
+        self.assertVerdict(res, 8, "FAIL", "extra: extra_key")
+
+    def test_unparseable_report_goes_manual(self):
+        res = self.run_checks("10", self.golden_files({"report.json": "{oops"}))
+        self.assertVerdict(res, 3, "MANUAL", "does not parse as JSON")
+
+    def test_second_py_file_fails(self):
+        res = self.run_checks("10", self.golden_files({"helper.py": "X = 1\n"}))
+        self.assertVerdict(res, 1, "FAIL", "more than one .py file")
+
+    def test_fixture_matches_spec_block(self):
+        # two routes, one answer: the fixture on disk and the CSV fenced inside
+        # the spec markdown must never drift. CRLF-tolerant on both sides (the
+        # fixture path is not -text in .gitattributes, so autocrlf may translate
+        # it on a fresh clone; the golden answers are identical either way).
+        spec = (BENCH / "specs" / "10-data-transform.md").read_text(encoding="utf-8")
+        m = re.search(r"```csv\n(.*?)```", spec, re.S)
+        self.assertIsNotNone(m, "no ```csv fence in spec 10")
+        self.assertEqual(FIXTURE.read_bytes().replace(b"\r\n", b"\n"),
+                         m.group(1).encode("utf-8").replace(b"\r\n", b"\n"))
+
+    def test_golden_recomputed_independently(self):
+        # third route: parse the fixture with csv + the documented rules, then
+        # pin the numbers as literals here - a wrong constant in checks.py goes
+        # red against this, because nothing below is derived from checks.py.
+        totals, counts, skipped, invalid, days = _recompute_golden(
+            FIXTURE.read_text(encoding="utf-8"))
+        self.assertEqual(totals, {"USD": 2300.49, "EUR": 3734.56, "INR": 65500.75})
+        self.assertEqual(counts, {"USD": 3, "EUR": 2, "INR": 3})
+        self.assertEqual(skipped, [(5, "E001"), (13, "E010")])
+        self.assertEqual([r for r, _ in invalid], [9, 10, 11, 14, 15])
+        self.assertEqual(days, ("2026-01-05", "2026-01-20"))
+        # and the scorer must judge from exactly these numbers:
+        self.assertEqual(checks.SPEC10_GOLDEN_TOTALS, totals)
+        self.assertEqual(checks.SPEC10_GOLDEN_ROWS, counts)
+        self.assertEqual(checks.SPEC10_GOLDEN_SKIPPED, dict(skipped))
+        self.assertEqual(checks.SPEC10_GOLDEN_INVALID, {r for r, _ in invalid})
+        self.assertEqual(checks.SPEC10_GOLDEN_RANGE, days)
+
+
 # ---------------------------------------------------------------- CLI
 
 class Cli(unittest.TestCase):
@@ -550,12 +1104,33 @@ class Cli(unittest.TestCase):
         self.assertIn("summary:", done.stdout)
 
     def test_bad_spec_exits_2(self):
-        done = self.run_cli("--spec", "09", "--dir", ".")
+        # 2026-11-07: was "--spec 09" until the v3 pack registered specs 06-10,
+        # which made 09 a valid scorer. The probe moved to an unregistered id;
+        # the contract it pins is unchanged: an unknown spec id exits 2.
+        done = self.run_cli("--spec", "11", "--dir", ".")
         self.assertEqual(done.returncode, 2)
 
     def test_missing_dir_exits_2(self):
         done = self.run_cli("--spec", "01", "--dir", "Z:/definitely/not/here")
         self.assertEqual(done.returncode, 2)
+
+    def test_non_ascii_output_never_crashes_the_cli(self):
+        # 2026-11-07 (v3 smoke): the spec 06/10 criterion text contains U+232B
+        # (backspace glyph) and U+20B9 (rupee sign), which the Windows console
+        # codec (cp1252) cannot encode - the scorer used to crash mid-run with
+        # UnicodeEncodeError, printing 6 of 10 lines and exiting 1. main() now
+        # reconfigures stdout/stderr to backslashreplace; pinned here with a
+        # forced cp1252 child stdout so the test is deterministic on any box.
+        tmp = tempfile.mkdtemp(prefix="checks-cli-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        Path(tmp, "index.html").write_text(CALC_HTML, encoding="utf-8")
+        done = subprocess.run(
+            [sys.executable, "-I", str(BENCH / "checks.py"), "--spec", "06", "--dir", tmp],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=dict(os.environ, PYTHONIOENCODING="cp1252"))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        nums = [int(line[:2]) for line in done.stdout.splitlines() if line[:2].isdigit()]
+        self.assertEqual(sorted(nums), list(range(1, 11)))
 
 
 if __name__ == "__main__":

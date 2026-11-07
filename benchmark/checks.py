@@ -21,7 +21,10 @@ nonexistent --dir, bad --spec) exits 2 via argparse without scoring.
 """
 import argparse
 import csv
+import hashlib
+import json
 import re
+import sys
 import zipfile
 from pathlib import Path
 
@@ -534,10 +537,673 @@ def spec05(root):
     ])
 
 
-SPECS = {"01": spec01, "02": spec02, "03": spec03, "04": spec04, "05": spec05}
+# ------------------------------------------------------- spec 06/07 helpers
+# Single-file browser apps (calculator, pomodoro) share criterion 1: the whole
+# app must be one html file with inline CSS/JS, no external references and no
+# network or dynamic-import calls.
+
+ATTR_REF = re.compile(
+    r"""[\s](?:srcset|src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))""", re.I)
+NET_CALL = re.compile(r"\bfetch\s*\(|XMLHttpRequest|\bWebSocket\b|\bimport\s*\(")
+DYNAMIC_EXEC = re.compile(
+    r"eval\s*\(|new\s+Function\s*\(|setTimeout\s*\(\s*[\"']|setInterval\s*\(\s*[\"']")
+BENIGN_SCHEMES = ("mailto:", "tel:")
+
+
+def external_refs(html):
+    """Attribute values that reference a file or an absolute URL. #-fragments,
+    data: URIs and mailto:/tel: links are not external references - a mailto
+    link is neither a stylesheet, a script, a CDN link nor an import."""
+    hits = []
+    for m in ATTR_REF.finditer(html):
+        val = next((g for g in m.groups() if g is not None), "")
+        if m.group(0).lstrip().lower().startswith("srcset"):
+            tokens = [t.strip().split(" ")[0] for t in val.split(",") if t.strip()]
+        else:
+            tokens = [val.strip()]
+        for tok in tokens:
+            low = tok.lower()
+            if not tok or low.startswith(("#", "data:")):
+                continue
+            scheme = re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", tok)
+            if scheme:
+                if scheme.group(0).lower() not in BENIGN_SCHEMES:
+                    hits.append(tok)
+            else:
+                hits.append(tok)   # relative file reference
+    return hits
+
+
+def single_file_c1(root):
+    """Criterion 1 for specs 06/07: exactly one html file, no external
+    references, no network or dynamic-import calls. Prints the criterion-1
+    line unless the project has no html at all (the caller then prints the
+    all-manual block including line 1). Returns the html path or None."""
+    htmls = list(iter_files(root, {".html", ".htm"}))
+    if not htmls:
+        return None
+    text = read(htmls[0])
+    if len(htmls) > 1:
+        names = ", ".join(p.name for p in htmls[:4])
+        out(1, "FAIL", f"{len(htmls)} html files found ({names}) - "
+                       "the app must be one index.html")
+        return htmls[0]
+    refs = external_refs(text)
+    if refs:
+        out(1, "FAIL", f"external reference(s) in {htmls[0].name}: " + ", ".join(refs[:3]))
+        return htmls[0]
+    net = NET_CALL.search(text)
+    if net:
+        line = re.search(r"^[^\n]*" + re.escape(net.group(0)) + r"[^\n]*", text, re.M)
+        out(1, "FAIL", f"network or dynamic-import call in {htmls[0].name}: "
+                       f"'{(line.group(0) if line else net.group(0)).strip()[:70]}'")
+        return htmls[0]
+    out(1, "PASS", f"one {htmls[0].name}, no external references (denylist scan)")
+    return htmls[0]
+
+
+def spec06(root):
+    html_path = single_file_c1(root)
+    if html_path is None:
+        manual_block([
+            (1, "no html file found - the app must be one index.html with all CSS and JS inline"),
+            (2, "no html file found to scan for dynamic code execution"),
+            (3, "type 2 + 3 × 4 then = - display must show 14, not 20 (operator precedence)"),
+            (4, "type 0.1 + 0.2 = - display must show exactly 0.3; no 0.30000000000000004 "
+                "in any displayed result"),
+            (5, "type 5 ÷ 0 = - expect a clear error state (e.g. 'Cannot divide by zero') "
+                "and C must recover; not Infinity, not frozen"),
+            (6, "type 200 + 10 % = - expect 220; then 50 % = alone - expect 0.5"),
+            (7, "C resets expression, result and error state; ⌫ removes exactly one character; "
+                "± flips the sign of the current number"),
+            (8, "history tape shows at least the last 3 completed calculations and updates "
+                "after each press of ="),
+            (9, "at 360px width: no horizontal scroll, all buttons visible and tappable, Tab "
+                "order in reading order with a visible focus indicator"),
+            (10, "run a normal sequence (type an expression, =, C, ⌫) with the console open - "
+                 "it must stay free of errors"),
+        ])
+        return
+    src = source_text(root)
+    m = DYNAMIC_EXEC.search(src)
+    if m:
+        line = re.search(r"^[^\n]*" + re.escape(m.group(0)) + r"[^\n]*", src, re.M)
+        out(2, "FAIL", f"dynamic code execution: "
+                       f"'{(line.group(0) if line else m.group(0)).strip()[:70]}'")
+    else:
+        out(2, "PASS", "no eval / new Function / string-argument setTimeout or setInterval "
+                       "in source (denylist scan - absence of a pattern is evidence, not proof)")
+    manual_block([
+        (3, "type 2 + 3 × 4 then = - display must show 14, not 20 (operator precedence)"),
+        (4, "type 0.1 + 0.2 = - display must show exactly 0.3; no 0.30000000000000004 "
+            "in any displayed result"),
+        (5, "type 5 ÷ 0 = - expect a clear error state (e.g. 'Cannot divide by zero') "
+            "and C must recover; not Infinity, not frozen"),
+        (6, "type 200 + 10 % = - expect 220; then 50 % = alone - expect 0.5"),
+        (7, "C resets expression, result and error state; ⌫ removes exactly one character; "
+            "± flips the sign of the current number"),
+        (8, "history tape shows at least the last 3 completed calculations and updates "
+            "after each press of ="),
+        (9, "at 360px width: no horizontal scroll, all buttons visible and tappable, Tab "
+            "order in reading order with a visible focus indicator"),
+        (10, "run a normal sequence (type an expression, =, C, ⌫) with the console open - "
+             "it must stay free of errors"),
+    ])
+
+
+def spec07(root):
+    html_path = single_file_c1(root)
+    if html_path is None:
+        manual_block([
+            (1, "no html file found - the app must be one index.html with inline CSS and JS"),
+            (2, "no html file found; fresh load, click Start - 25:00 must count down visibly "
+                "every second"),
+            (3, "no html file found; a finished work session starts a 5:00 short break, and "
+                "after the 4th completed work session a 15:00 long break; cycle position "
+                "visible (e.g. 'Work 2 of 4')"),
+            (4, "no html file found; auto-start ON starts the next phase alone with the "
+                "correct duration; OFF waits for Start"),
+            (5, "no html file found; the tab title must show the remaining time and stay "
+                "honest against the wall clock"),
+            (6, "no html file found; reload mid-session - phase, remaining seconds (+/-5 s), "
+                "completed count and auto-start must all restore"),
+            (7, "no html file found; Space toggles Start/Pause; Pause 30 s leaves the time "
+                "frozen; Reset returns to 25:00 with count 0"),
+            (8, "no html file found; Skip advances to the next phase now with its correct "
+                "duration, and a skipped work session does not count as completed"),
+            (9, "no html file found; a full work -> break -> work transition must keep the "
+                "console clean and the phase labeled"),
+            (10, "no html file found; verify the timer against the wall clock (hide the tab "
+                 "2 minutes, return, ~2 minutes must be gone)"),
+        ])
+        return
+    src = source_text(root)
+    # quote the strongest evidence first: a wall-clock API call, else a
+    # deadline-shaped variable name. A grep can never prove the mechanism.
+    code_m = re.search(r"^[^\n]*(?:\bDate\.now\(|\bperformance\.now\("
+                       r"|\bnew Date\([^)]*\)\.getTime\()[^\n]*", src, re.I | re.M)
+    word_m = re.search(r"^[^\n]*(?:deadline|endTime|endsAt|targetTime)[^\n]*",
+                       src, re.I | re.M)
+    if code_m or word_m:
+        quote = (code_m or word_m).group(0).strip()[:70]
+        out(10, "MANUAL", f"wall-clock pattern found: '{quote}' - confirm against the wall "
+                          "clock: hide the tab 2 minutes, return, ~2 minutes must be gone")
+    else:
+        out(10, "MANUAL", "no wall-clock deadline pattern found statically - timer may count "
+                          "interval ticks; verify against the wall clock (hide the tab "
+                          "2 minutes, return, ~2 minutes must be gone)")
+    manual_block([
+        (2, "fresh load, click Start - 25:00 must count down visibly every second"),
+        (3, "a finished work session starts a 5:00 short break, and after the 4th completed "
+            "work session a 15:00 long break; cycle position visible (e.g. 'Work 2 of 4')"),
+        (4, "auto-start ON starts the next phase alone with the correct duration; OFF waits "
+            "for Start"),
+        (5, "while running, switch tabs: the tab title shows the remaining time; leave for "
+            "2 minutes and return - roughly 2 minutes less, not stopped or reset"),
+        (6, "reload mid-session - phase, remaining seconds (+/-5 s of drift), completed "
+            "count and auto-start must all restore"),
+        (7, "Space toggles Start/Pause; pause for 30 s - the remaining time must not change; "
+            "Reset returns to a fresh 25:00 work session with count 0"),
+        (8, "Skip advances to the next phase immediately with its correct duration, and a "
+            "skipped work session does not count as completed"),
+        (9, "run a full work -> break -> work transition with the console open - no errors, "
+            "and the phase is always labeled (Work / Short break / Long break)"),
+    ])
+
+
+# ------------------------------------------------------------------ spec 08
+
+TEST_FILE_PAT = re.compile(r"(?:^|/)test_|_test\.|\.test\.|\.spec\.|(?:^|/)tests?/", re.I)
+
+
+def spec08(root):
+    all_src = [p for p in iter_files(root, {".py", ".js", ".mjs", ".cjs", ".ts"})
+               if not TEST_FILE_PAT.search("/".join(p.parts).lower())]
+    tests = [p for p in iter_files(root, {".py", ".js", ".mjs", ".cjs", ".ts"})
+             if TEST_FILE_PAT.search("/".join(p.parts).lower())]
+    readme = next((p for p in iter_files(root, {".md"})
+                   if p.name.lower() == "readme.md"), None)
+    test_cmd = run_cmd = None
+    if readme:
+        text = read(readme)
+        test_cmd = re.search(r"\bnpm test\b|\bnpx\s+\S+|\bpytest\b"
+                             r"|\bpython\s+-m\s+pytest\b|\bpython\s+-m\s+unittest\b", text)
+        run_cmd = re.search(r"\bnpm start\b|\buvicorn\b|\bflask run\b"
+                            r"|\bpython\s+(?!-m)\S+|\bnode\s+(?!--test)\S+", text)
+    if not readme:
+        c1 = ("FAIL", "README.md missing at project root")
+    elif not test_cmd:
+        c1 = ("FAIL", "README.md present but names no test command (looked for: npm test, "
+                      "npx <runner>, pytest, python -m pytest, python -m unittest)")
+    elif not run_cmd:
+        c1 = ("FAIL", "README.md present but names no run command (looked for: npm start, "
+                      "node server.js, uvicorn, flask run, python <script>)")
+    elif not all_src:
+        c1 = ("MANUAL", "README commands found, but no server source (.py/.js beyond tests) "
+                        "found statically - confirm the layout by eye")
+    elif not tests:
+        c1 = ("MANUAL", "README commands and server source found, but no test files found "
+                        "statically - confirm by eye; the README command decides")
+    else:
+        c1 = ("PASS", f"README names test command '{test_cmd.group(0)}' and run command "
+                      f"'{run_cmd.group(0)}'; {len(all_src)} server source file(s), "
+                      f"{len(tests)} test file(s)")
+
+    count = 0
+    for p in tests:
+        t = read(p)
+        if p.suffix == ".py":
+            count += len(re.findall(r"^\s*def\s+test_", t, re.M))
+        else:
+            count += len(re.findall(r"\btest\s*\(|\bit\s*\(", t))
+    if count < 8:
+        c5 = ("FAIL", f"only {count} test function(s) found; spec requires at least 8")
+    else:
+        c5 = ("MANUAL", f"{count} test function(s) in {len(tests)} file(s) - run the README "
+                        "command offline and paste the green output")
+
+    scanned = list(iter_files(root, SCAN_EXTS))
+    blob = "\n".join(read(p) for p in scanned) + read(root / ".env")
+    secret = re.search(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}"
+                       r"|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}"
+                       r"|github_pat_[A-Za-z0-9_]{30,}|AIza[0-9A-Za-z_\-]{35}"
+                       r"|xox[baprs]-[A-Za-z0-9-]{10,}", blob)
+    url_hit = None
+    if not secret:
+        for p in all_src:
+            for m in re.finditer(r"https?://[^\s\"'<>\\)]+", read(p)):
+                host = m.group(0).split("://", 1)[1].split("/")[0]
+                if not host.lower().startswith(("localhost", "127.0.0.1", "0.0.0.0")):
+                    url_hit = m.group(0)
+                    break
+            if url_hit:
+                break
+    if secret:
+        c6 = ("FAIL", f"secret-like literal matched pattern '{secret.group(0)[:12]}...'")
+    elif url_hit:
+        c6 = ("MANUAL", f"URL literal found: '{url_hit[:70]}' - confirm it is not an "
+                        "external call")
+    else:
+        c6 = ("PASS", f"no secret patterns in {len(scanned)} scanned file(s) and no external "
+                      f"host URLs in server source (denylist scan - absence of a pattern is "
+                      f"evidence, not proof)")
+
+    store = re.search(r"^[^\n]*(?:sqlite|json|writeFile|\bopen\(|shutil|\bdump\b)[^\n]*",
+                      "\n".join(read(p) for p in all_src), re.I | re.M)
+    if store:
+        c8 = ("MANUAL", f"storage code: '{store.group(0).strip()[:70]}' - stop the server, "
+                        "restart, confirm the data survived")
+    else:
+        c8 = ("MANUAL", "no file-storage code found statically - memory-only suspicion; "
+                        "the restart test decides")
+
+    lines = [(1, c1[0], c1[1]), (5, c5[0], c5[1]), (6, c6[0], c6[1]), (8, c8[0], c8[1])]
+    lines += [(n, "MANUAL", how) for n, how in [
+        (2, "start the server, then every invalid class must return HTTP 400 with a JSON body "
+            "naming the field and the reason, never a 500: "
+            "curl -i -X POST localhost:PORT/expenses -H 'content-type: application/json' "
+            "-d '{\"payer\":\"A\",\"amount\":-5,\"currency\":\"USD\",\"date\":\"2026-01-01\"}' "
+            "(negative amount); same with \"currency\":\"GBP\" (unknown currency); same with "
+            "\"payer\":\"\" (empty payer); -d '{oops' (malformed JSON)"),
+        (3, "add 'A paid 100 USD' and 'B paid 100 EUR', then GET /balances - each person must "
+            "show separate USD and EUR figures; a merged 200 fails"),
+        (4, "with A paid 90, B paid 30, C paid 0 in one currency (equal three-way split), "
+            "POST /settle must return exactly B pays A 10 and C pays A 40 (A receives 50), "
+            "amounts at 2 decimals"),
+        (7, "frontend: an expense added from the form must appear in the list without a page "
+            "reload; the page must be usable at 360px with no horizontal scrolling"),
+        (9, "add -> list -> balances -> settle with the console open - no unhandled errors, "
+            "and no exception traceback is ever sent to the client (check an invalid POST's "
+            "response body)"),
+        (10, "balances and settle amounts must show exact 2-decimal values - no "
+             "0.30000000000000004 in any balance or transfer"),
+    ]]
+    for num, st, det in sorted(lines):
+        out(num, st, det)
+
+
+# ------------------------------------------------------------------ spec 09
+# The --dir is the run's copy of benchmark-v3/starters/09-notes-app. The
+# starter ships a sha256 manifest of every file; the whitelist names the files
+# the agent is allowed to change (the fixes, the tests, the notes).
+
+BROWNFIELD_WHITELIST = {"server.js", "tests/notes.test.js", "NOTES.md"}
+PRISTINE_STARTER = (Path(__file__).resolve().parent.parent / "benchmark-v3"
+                    / "starters" / "09-notes-app")
+
+
+def _brownfield_c2(root):
+    """Byte-identity of the run's copy against the starter's sha manifest."""
+    manifest_path = root / "manifest.json"
+    if not manifest_path.is_file():
+        return "FAIL", "manifest.json is gone - the starter's tamper guard cannot run"
+    pristine = PRISTINE_STARTER / "manifest.json"
+    anchored = pristine.is_file()
+    if anchored and manifest_path.read_bytes() != pristine.read_bytes():
+        return "FAIL", "manifest.json was edited - the tamper guard itself"
+    try:
+        entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        return "FAIL", f"manifest.json does not parse: {e}"
+    if not isinstance(entries, dict):
+        return "FAIL", "manifest.json is not a JSON object"
+    problems = []
+    for rel in sorted(entries):
+        p = root / rel
+        if rel in BROWNFIELD_WHITELIST:
+            if not p.is_file():
+                problems.append(f"whitelisted file missing: {rel}")
+            continue
+        if not p.is_file():
+            problems.append(f"manifest-listed file missing: {rel}")
+            continue
+        actual = hashlib.sha256(p.read_bytes()).hexdigest()
+        if actual != entries[rel]:
+            problems.append(f"{rel} sha mismatch: manifest {str(entries[rel])[:12]}... "
+                            f"!= disk {actual[:12]}...")
+    listed = set(entries)
+    unlisted = []
+    for p in root.rglob("*"):
+        if not p.is_file():
+            continue
+        parts = p.relative_to(root).parts
+        if SKIP_DIRS & set(parts[:-1]):
+            continue
+        rel = p.relative_to(root).as_posix()
+        if rel not in listed and rel not in BROWNFIELD_WHITELIST \
+                and rel != "manifest.json" and p.name != "data.json":
+            unlisted.append(rel)
+    if unlisted:
+        more = f" (+{len(unlisted) - 5} more)" if len(unlisted) > 5 else ""
+        problems.append("unlisted file(s) present: " + ", ".join(sorted(unlisted)[:5]) + more)
+    if problems:
+        return "FAIL", "; ".join(problems[:3])
+    if not anchored:
+        return "MANUAL", "every manifest-listed file matches its recorded hash, but the " \
+                         "pristine starter manifest was not reachable to anchor the manifest " \
+                         "itself - compare against the starter by eye"
+    return "PASS", f"{len(entries)}/{len(entries)} manifest files byte-identical " \
+                   "(whitelist: server.js, tests/notes.test.js, NOTES.md)"
+
+
+def _brownfield_c6(root):
+    tf = root / "tests" / "notes.test.js"
+    if not tf.is_file():
+        return "FAIL", "tests/notes.test.js missing - the suite cannot be judged"
+    n = len(re.findall(r"\btest\s*\(", read(tf)))
+    if n < 15:
+        return "FAIL", f"test file has {n} test(s); 12 original + at least 3 regression " \
+                       "= at least 15"
+    return "MANUAL", f"{n} tests counted (12 original + >=3 new) - confirm each new test was " \
+                     "revert-verified (revert only that bug's fix, watch it fail, restore) " \
+                     "and all pass"
+
+
+def _brownfield_c7(root):
+    """package.json byte-identity, judged against the PRISTINE manifest when it
+    is reachable - an edited run manifest must never authenticate its own edit."""
+    pkg = root / "package.json"
+    if not pkg.is_file():
+        return "FAIL", "package.json missing - the zero-new-dependencies rule cannot hold"
+    recorded = None
+    pristine = PRISTINE_STARTER / "manifest.json"
+    if pristine.is_file():
+        try:
+            recorded = json.loads(pristine.read_text(encoding="utf-8")).get("package.json")
+        except (json.JSONDecodeError, OSError, AttributeError):
+            recorded = None
+    if recorded is None:
+        try:
+            recorded = json.loads(
+                (root / "manifest.json").read_text(encoding="utf-8")).get("package.json")
+        except (json.JSONDecodeError, OSError, AttributeError):
+            recorded = None
+    if recorded is None:
+        return "MANUAL", "no trusted manifest records package.json - compare it against " \
+                         "the starter by eye"
+    actual = hashlib.sha256(pkg.read_bytes()).hexdigest()
+    if actual != recorded:
+        return "FAIL", f"package.json was modified (sha {actual[:12]}... != recorded " \
+                       f"{recorded[:12]}...) - zero new dependencies required"
+    return "PASS", "package.json byte-identical to the starter (sha256 match)"
+
+
+def _brownfield_c8(root):
+    notes = root / "NOTES.md"
+    if not notes.is_file():
+        return "FAIL", "NOTES.md missing - the spec requires it"
+    text = read(notes)
+    missing = [f"Bug {b}" for b in "ABC"
+               if not re.search(r"\bbug\s*" + b + r"\b", text, re.I)]
+    if not missing:
+        return "MANUAL", "sections for Bug A/B/C found - confirm each documents all four " \
+                         "parts: file, observed wrong behavior, root cause, fix"
+    return "MANUAL", "no section found for " + ", ".join(missing) + \
+                     " - all three bugs must be documented"
+
+
+def spec09(root):
+    c2 = _brownfield_c2(root)
+    c6 = _brownfield_c6(root)
+    c7 = _brownfield_c7(root)
+    c8 = _brownfield_c8(root)
+    out(1, "MANUAL", "all 12 original tests still passing - judge from the suite output "
+                     "saved in the run folder")
+    out(2, c2[0], c2[1])
+    out(3, "MANUAL", "Bug A (dates): create a note with createdAt before 10:00 local "
+                     "(e.g. 2026-11-07T03:30:00.000Z on a UTC+5:30 machine) - it must group "
+                     "under its own calendar day, not the previous one")
+    out(4, "MANUAL", "Bug B (search): search q=todo must find 'Shopping ToDo list' "
+                     "(case-insensitive, partial match)")
+    out(5, "MANUAL", "Bug C (delete): delete one note, then delete a different one - the "
+                     "second delete must remove exactly the requested id (seeded bug: a "
+                     "notes[id] index lookup 404s or removes the wrong note)")
+    out(6, c6[0], c6[1])
+    out(7, c7[0], c7[1])
+    out(8, c8[0], c8[1])
+    out(9, "MANUAL", "server and test runs free of unhandled errors apart from the 3 bugs' "
+                     "expected misbehavior during reproduction - judge from your session")
+    out(10, "MANUAL", "full suite (12 original + new) green in one run - judge from the "
+                      "suite output saved in the run folder")
+
+
+# ------------------------------------------------------------------ spec 10
+# The golden scorer: the spec's embedded CSV is mirrored byte-exactly at
+# benchmark/specs/fixtures/10-expenses.csv, and the golden answers below were
+# recomputed independently in test_checks.py (test_golden_recomputed_
+# independently) so a wrong constant here goes red.
+
+SPEC10_KEYS = {"totals_by_currency", "rows_by_currency", "skipped_duplicates",
+               "invalid_rows", "date_range"}
+SPEC10_GOLDEN_TOTALS = {"USD": 2300.49, "EUR": 3734.56, "INR": 65500.75}
+SPEC10_GOLDEN_ROWS = {"USD": 3, "EUR": 2, "INR": 3}
+SPEC10_GOLDEN_SKIPPED = {5: "E001", 13: "E010"}
+SPEC10_GOLDEN_INVALID = {9, 10, 11, 14, 15}
+SPEC10_GOLDEN_RANGE = ("2026-01-05", "2026-01-20")
+SPEC10_CSV_DIFFERS = ("expenses.csv differs from the spec fixture - the golden answers "
+                      "apply only to the exact fixture; judge from your saved evidence")
+SPEC10_NO_CSV = ("no expenses.csv found in the run folder - the golden answers apply "
+                 "only to the exact fixture; judge from your saved evidence")
+
+
+def _crlf_norm(data):
+    """Byte comparison tolerant of CRLF checkout translation (core.autocrlf
+    translates text files at clone; the fixture path is not -text in
+    .gitattributes). The golden answers are identical either way."""
+    return data.replace(b"\r\n", b"\n")
+
+
+def _stdlib_names():
+    """Top-level stdlib module names. sys.stdlib_module_names is 3.10+; on 3.9
+    derive the set from the interpreter's own library directory (site-packages
+    excluded - third-party installs live there) plus compiled-in and .pyd
+    extension modules. The derived set can only be a superset of 3.9's stdlib,
+    which under-FAILs rather than false-FAILs a stdlib import."""
+    names = getattr(sys, "stdlib_module_names", None)
+    if names:
+        return frozenset(names)
+    import os
+    import sysconfig
+    found = set(sys.builtin_module_names)
+    lib = sysconfig.get_path("stdlib")
+    if lib:
+        for entry in os.listdir(lib):
+            if entry.endswith((".py", ".pyi")):
+                found.add(entry.rsplit(".", 1)[0])
+            elif os.path.isdir(os.path.join(lib, entry)) and \
+                    entry.lower() not in ("site-packages", "dist-packages", "__pycache__"):
+                found.add(entry)
+    dlls = os.path.join(os.path.dirname(sys.executable), "DLLs")
+    if os.path.isdir(dlls):
+        for entry in os.listdir(dlls):
+            if entry.endswith(".pyd"):
+                found.add(entry.split(".")[0])
+    return frozenset(found)
+
+
+def _spec10_locate(root, name, exts):
+    exact = root / name
+    if exact.is_file():
+        return exact
+    return next((p for p in iter_files(root, exts) if p.name == name), None)
+
+
+def _spec10_c3(report):
+    got = report.get("totals_by_currency")
+    if not isinstance(got, dict):
+        return False, ("FAIL", f"totals_by_currency is {type(got).__name__}, "
+                               "expected an object")
+    if set(got) != set(SPEC10_GOLDEN_TOTALS):
+        return False, ("FAIL", f"totals_by_currency keys {sorted(map(str, got))} != "
+                               f"{sorted(SPEC10_GOLDEN_TOTALS)}")
+    for cur in sorted(SPEC10_GOLDEN_TOTALS):
+        want = SPEC10_GOLDEN_TOTALS[cur]
+        try:
+            have = round(float(got[cur]), 2)
+        except (TypeError, ValueError):
+            return False, ("FAIL", f"{cur} total missing or not a number (golden {want})")
+        if abs(have - want) > 0.005:
+            return False, ("FAIL", f"{cur} total {have} != golden {want}")
+    return True, ("PASS", "USD 2300.49, EUR 3734.56, INR 65500.75 match the golden")
+
+
+def _spec10_c4(report):
+    got = report.get("skipped_duplicates")
+    if not isinstance(got, list):
+        return "FAIL", "skipped_duplicates is not a list"
+    rows = {}
+    for e in got:
+        try:
+            rows[int(e["row"])] = str(e.get("id", ""))
+        except (KeyError, TypeError, ValueError):
+            return "FAIL", f"skipped_duplicates entry malformed: {str(e)[:60]}"
+    if rows == SPEC10_GOLDEN_SKIPPED:
+        return "PASS", "rows 5 (E001), 13 (E010)"
+    return "FAIL", f"skipped rows {sorted(rows.items())} != golden " \
+                   f"{sorted(SPEC10_GOLDEN_SKIPPED.items())}"
+
+
+def _spec10_c5(report):
+    got = report.get("invalid_rows")
+    if not isinstance(got, list):
+        return "FAIL", "invalid_rows is not a list"
+    rows, bare = [], []
+    for e in got:
+        try:
+            n = int(e["row"])
+        except (KeyError, TypeError, ValueError):
+            return "FAIL", f"invalid_rows entry malformed: {str(e)[:60]}"
+        rows.append(n)
+        if not str(e.get("reason", "") or "").strip():
+            bare.append(n)
+    if set(rows) != SPEC10_GOLDEN_INVALID:
+        return "FAIL", f"invalid rows {sorted(set(rows))} != golden " \
+                       f"{sorted(SPEC10_GOLDEN_INVALID)}"
+    if bare:
+        return "MANUAL", f"row {bare[0]} listed with no reason text - confirm the reason " \
+                         "is specific"
+    return "PASS", "rows 9, 10, 11, 14, 15 all listed with reasons"
+
+
+def _spec10_c6(report):
+    dr = report.get("date_range")
+    if isinstance(dr, dict) and dr.get("min") == SPEC10_GOLDEN_RANGE[0] \
+            and dr.get("max") == SPEC10_GOLDEN_RANGE[1]:
+        return "PASS", "min 2026-01-05, max 2026-01-20 (DD/MM and month-name forms " \
+                       "parsed correctly)"
+    got = f"min {dr.get('min')}, max {dr.get('max')}" if isinstance(dr, dict) else str(dr)[:60]
+    return "FAIL", f"date_range {got} != golden min 2026-01-05, max 2026-01-20"
+
+
+def _spec10_c8(report):
+    keys = set(report)
+    if keys == SPEC10_KEYS:
+        return "PASS", "exactly the five specified keys"
+    bits = []
+    extra, missing = keys - SPEC10_KEYS, SPEC10_KEYS - keys
+    if extra:
+        bits.append("extra: " + ", ".join(sorted(extra)))
+    if missing:
+        bits.append("missing: " + ", ".join(sorted(missing)))
+    return "FAIL", "; ".join(bits)
+
+
+def _spec10_c9(report):
+    got = report.get("rows_by_currency")
+    if got == SPEC10_GOLDEN_ROWS:
+        return "PASS", "USD 3, EUR 2, INR 3 (sums verified through totals)"
+    return "FAIL", f"rows_by_currency {got} != golden USD 3, EUR 2, INR 3"
+
+
+def spec10(root):
+    pys = list(iter_files(root, {".py"}))
+    tp = next((p for p in pys if p.name == "transform.py"), None)
+    if tp is None:
+        c1 = ("FAIL", "no transform.py found")
+    elif len(pys) > 1:
+        c1 = ("FAIL", "more than one .py file: " + ", ".join(p.name for p in pys[:4]))
+    else:
+        src = read(tp)
+        stdlib = _stdlib_names()
+        bad = []
+        for m in re.finditer(r"^\s*(?:import|from)\s+([A-Za-z_][\w.]*)", src, re.M):
+            top = m.group(1).split(".")[0]
+            if top != tp.stem and top not in stdlib:
+                bad.append(top)
+        if bad:
+            c1 = ("FAIL", "non-stdlib import: " + ", ".join(sorted(set(bad))))
+        elif re.search(r"__import__\s*\(|\bimportlib\.", src):
+            c1 = ("MANUAL", "dynamic import pattern found (__import__ or importlib) - "
+                            "confirm all imports are stdlib by eye")
+        else:
+            c1 = ("PASS", "single transform.py, all imports stdlib (denylist scan)")
+    c2 = ("MANUAL", "run `python transform.py expenses.csv report.json` (expect exit 0 + "
+                    "report written) and `python transform.py missing.csv out.json` "
+                    "(expect exit 2 + stderr naming the file); save both outputs in the "
+                    "run folder")
+    c10 = ("MANUAL", "read transform.py - explicit rules for decimal-comma, symbol "
+                     "mapping, date formats, impossible dates, rather than one fragile "
+                     "regex; judge readability")
+    report_p = _spec10_locate(root, "report.json", {".json"})
+    csv_p = _spec10_locate(root, "expenses.csv", {".csv"})
+    if report_p is None:
+        lines = [(1, c1[0], c1[1]), (2, c2[0], c2[1]), (10, c10[0], c10[1])]
+        lines += [(n, "MANUAL", "no report.json found in the run folder - run the tool and "
+                                "save report.json here") for n in range(3, 10)]
+        for num, st, det in sorted(lines):
+            out(num, st, det)
+        return
+    try:
+        report = json.loads(read(report_p))
+    except (json.JSONDecodeError, ValueError) as e:
+        lines = [(1, c1[0], c1[1]), (2, c2[0], c2[1]), (10, c10[0], c10[1])]
+        lines += [(n, "MANUAL", f"report.json does not parse as JSON: {e}")
+                  for n in range(3, 10)]
+        for num, st, det in sorted(lines):
+            out(num, st, det)
+        return
+    if not isinstance(report, dict):
+        lines = [(1, c1[0], c1[1]), (2, c2[0], c2[1]), (10, c10[0], c10[1])]
+        lines += [(n, "MANUAL", "report.json is not a JSON object - judge from your saved "
+                                "evidence") for n in range(3, 10)]
+        for num, st, det in sorted(lines):
+            out(num, st, det)
+        return
+    fixture = Path(__file__).resolve().parent / "specs" / "fixtures" / "10-expenses.csv"
+    if csv_p is None:
+        mid = [(n, "MANUAL", SPEC10_NO_CSV) for n in range(3, 10)]
+    elif not fixture.is_file() or \
+            _crlf_norm(csv_p.read_bytes()) != _crlf_norm(fixture.read_bytes()):
+        mid = [(n, "MANUAL", SPEC10_CSV_DIFFERS) for n in range(3, 10)]
+    else:
+        # the CSV is the exact spec fixture and the report parses: golden compare
+        totals_ok, c3 = _spec10_c3(report)
+        c7 = (("PASS", "totals match the golden - $1,200.50/₹45,000/1.234,56 €/2.500,00 € "
+                       "all parsed; verified through the sums") if totals_ok else
+              ("MANUAL", "totals do not match the golden - judge which amount format "
+                         "misparsed from your evidence"))
+        mid = [(3, c3[0], c3[1]), (4, *_spec10_c4(report)), (5, *_spec10_c5(report)),
+               (6, *_spec10_c6(report)), (7, c7[0], c7[1]), (8, *_spec10_c8(report)),
+               (9, *_spec10_c9(report))]
+    lines = [(1, c1[0], c1[1]), (2, c2[0], c2[1]), (10, c10[0], c10[1])] + mid
+    for num, st, det in sorted(lines):
+        out(num, st, det)
+
+
+SPECS = {"01": spec01, "02": spec02, "03": spec03, "04": spec04, "05": spec05,
+         "06": spec06, "07": spec07, "08": spec08, "09": spec09, "10": spec10}
 
 
 def main():
+    # 2026-11-07 (v3 smoke): the spec 06/10 criterion text contains characters
+    # the Windows console codec (cp1252) cannot encode - printing used to crash
+    # mid-run with UnicodeEncodeError, breaking the exit-0 and the one-line-per-
+    # criterion contracts (spec 06 printed 6 of 10 lines live). Backslashreplace
+    # keeps the console encoding but can no longer raise; UTF-8 consoles are
+    # unaffected.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--spec", required=True, choices=sorted(SPECS))
     ap.add_argument("--dir", required=True, type=Path, help="root of the built project for this run")
