@@ -1,5 +1,9 @@
 # Benchmark packs must stay byte-identical to the working copies: the C6
 # sha256 guard and the recorded tool shas depend on it.
 benchmark-hard/** -text
+# The spec 09 starter's manifest.json pins sha256 of every shipped file;
+# autocrlf conversion on a fresh clone would change every byte and break the
+# scorer's sha-guard. Same class as benchmark-hard above.
+benchmark-v3/starters/** -text
 # Shell scripts must stay LF: CRLF endings break bash (v3 park/restore).
 *.sh text eol=lf
