@@ -83,6 +83,23 @@ all caught, all green after revert; same temp-dir driver, byte-exact restore):
      spec08 README run-command regex
   W8 data.json exempted by NAME at any       -> Spec09.test_nested_data_json_fails_unlisted
      depth instead of root-only
+
+Pass 5, 2026-11-07, attacking the wave-2 RE-REVIEW fix guards (N1-N6) - all
+caught, all green after revert, checks.py byte-restored each time:
+  V1 data:-URI @import strip tail widened    -> Spec06.test_bare_data_import_cannot_eat_a_real_reference
+     back past a raw space
+  V2 semicolon-chained statement split       -> Spec10.test_semicolon_chained_import_caught
+     removed (import csv; import requests)
+  V3 earliest-quote-by-position reverted     -> Spec10.test_mixed_quote_string_import_caught
+     to fixed for-order
+  V4 loopback allowance back to 127. prefix  -> Spec08.test_loopback_prefix_hostname_is_a_hit
+  V5 #-comment formats dropped from          -> Spec08.test_config_comment_secret_goes_manual
+     comment_pattern (config secret FAILs)
+  V6 c6 counter back on raw text             -> Spec09.test_commented_out_tests_not_counted
+     (commented-out test() lines inflate)
+Probe-harness note for the next editor: unittest writes OK/FAILED to stderr,
+not stdout - a red-detector that reads only stdout reports every mutation
+"NOT RED" (this cost one wasted probe run on 2026-11-07 before the fix).
 """
 import contextlib
 import csv
@@ -687,6 +704,15 @@ class Spec06(FixtureTest):
         res = self.run_checks("06", {"index.html": html})
         self.assertVerdict(res, 1, "PASS", "no external references")
 
+    def test_bare_data_import_cannot_eat_a_real_reference(self):
+        # 2026-11-07 wave-2 re-review (N1): the data:-URI exemption stops at a
+        # raw space - a bare form must not swallow an external ref on the line
+        html = CALC_HTML.replace(
+            "<style>",
+            '<style>@import data:text/css,body{} <link rel=stylesheet href=https://evil.com/x.css>')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "FAIL", "external reference")
+
 
 # ---------------------------------------------------------------- spec 07
 
@@ -886,6 +912,21 @@ class Spec08(FixtureTest):
         res = self.run_checks("08", files)
         self.assertVerdict(res, 6, "MANUAL", "URL literal found")
 
+    def test_loopback_prefix_hostname_is_a_hit(self):
+        # 2026-11-07 wave-2 re-review (N4): 127.0.0.1.evil.com is not a loopback
+        files = dict(self.FULL)
+        files["app.py"] = SPLIT_APP + 'CALLBACK = "http://127.0.0.1.evil.com/x"\n'
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "MANUAL", "URL literal found")
+
+    def test_config_comment_secret_goes_manual(self):
+        # 2026-11-07 wave-2 re-review (N5): yaml/ini/env comments are #-comment
+        # formats the c6 scan covers - a documented token there is MANUAL
+        files = dict(self.FULL)
+        files["config.yaml"] = "# docs: the token shape is ghp_" + "a" * 36 + "\n"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "MANUAL", "only inside a comment")
+
 
 # ---------------------------------------------------------------- spec 09
 
@@ -988,6 +1029,16 @@ class Spec09(FixtureTest):
         files["sub/data.json"] = b"{}\n"
         res = self.run_checks("09", files)
         self.assertVerdict(res, 2, "FAIL", "unlisted file(s) present: sub/data.json")
+
+    def test_commented_out_tests_not_counted(self):
+        # 2026-11-07 wave-2 re-review (N6): a commented-out test() line must
+        # not inflate the count - 12 real + 3 commented = FAIL at 12, not MANUAL
+        files = self.starter()
+        files["tests/notes.test.js"] += (b'// test("fake regression A", () => {});\n'
+                                         b'// test("fake regression B", () => {});\n'
+                                         b'// test("fake regression C", () => {});\n')
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 6, "FAIL", "12 test() call(s)")
 
     def test_missing_test_file_fails(self):
         files = self.starter()
@@ -1237,6 +1288,24 @@ class Spec10(FixtureTest):
         # import csv, requests used to pass with only csv seen
         files = self.golden_files()
         files["transform.py"] = TRANSFORM_PY.replace("import csv", "import csv, requests")
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
+
+    def test_semicolon_chained_import_caught(self):
+        # 2026-11-07 wave-2 re-review (N2): import csv; import requests is two
+        # statements - the second used to escape
+        files = self.golden_files()
+        files["transform.py"] = TRANSFORM_PY.replace("import csv",
+                                                     "import csv; import requests")
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
+
+    def test_mixed_quote_string_import_caught(self):
+        # 2026-11-07 wave-2 re-review (N3): an unpaired """ inside a ''' string
+        # must not truncate the line before the real closer and hide imports
+        files = self.golden_files()
+        files["transform.py"] = TRANSFORM_PY.replace(
+            "import csv", "x = '''a \"\"\"b'''\nimport requests\nimport csv")
         res = self.run_checks("10", files)
         self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
 

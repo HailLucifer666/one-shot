@@ -559,7 +559,11 @@ PY_COMMENT = re.compile(r"#[^\n]*")
 
 
 def comment_pattern(suffix):
-    return PY_COMMENT if suffix == ".py" else JS_COMMENT
+    # 2026-11-07 (wave-2 re-review N5): every #-comment format the spec08 c6
+    # scan covers must classify # comments - a documented token in a config
+    # comment is documentation (MANUAL), never a conclusive FAIL
+    return PY_COMMENT if suffix in {".py", ".yaml", ".yml", ".ini", ".cfg",
+                                    ".env", ".toml", ".sh"} else JS_COMMENT
 
 
 def strip_comments(text, suffix):
@@ -609,8 +613,11 @@ def single_file_c1(root):
                        "the app must be one index.html")
         return htmls[0]
     text = re.sub(r"<!--.*?-->", " ", read(htmls[0]), flags=re.S)
-    # a data:-URI @import imports content, not a file or host - exempt it
-    text = re.sub(r"@import\s+(?:url\s*\(\s*)?[\"']?data:[^\"')\n]*", " ", text, flags=re.I)
+    # a data:-URI @import imports content, not a file or host - exempt it.
+    # 2026-11-07 (wave-2 re-review N1): the token cannot contain a raw space,
+    # so stop there - a quote-free tail must not eat a real reference that
+    # follows on the same line.
+    text = re.sub(r"@import\s+(?:url\s*\(\s*)?[\"']?data:[^\"')\s]*", " ", text, flags=re.I)
     code_text = strip_comments(text, ".html")
     name = htmls[0].name
     refs = external_refs(code_text)
@@ -846,7 +853,10 @@ def spec08(root):
     secret = secret_hit = comment_secret = None
     for p in scanned + [root / ".env"]:
         text = read(p)
-        code_text = strip_comments(text, p.suffix.lower())
+        if p.suffix.lower() in {".html", ".htm", ".vue", ".svelte"}:
+            text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
+        sfx = p.suffix.lower() or (".env" if p.name == ".env" else "")
+        code_text = strip_comments(text, sfx)
         m = SECRET_PAT.search(code_text)
         if m:
             secret_hit = (p.name, m.group(0))
@@ -858,8 +868,10 @@ def spec08(root):
         for p in all_src:
             for m in re.finditer(r"https?://[^\s\"'<>\\)]+", read(p)):
                 host = m.group(0).split("://", 1)[1].split("/")[0].split(":")[0].lower()
+                # 2026-11-07 (wave-2 re-review N4): the loopback allowance is a
+                # full IP form, not a prefix - 127.0.0.1.evil.com is a hit
                 if not (host == "localhost" or host == "0.0.0.0" or host == "::1"
-                        or host.startswith("127.")):
+                        or re.fullmatch(r"127(?:\.\d{1,3}){3}", host)):
                     url_hit = m.group(0)
                     break
             if url_hit:
@@ -989,8 +1001,16 @@ def _brownfield_c6(root):
     if not tf.is_file():
         return "FAIL", "tests/notes.test.js missing - the suite cannot be judged"
     # test.only( counts as a test definition (the file's own defect if it never
-    # runs is the hand-judge's call at >=15; the count must stay factual)
-    n = len(re.findall(r"\btest(?:\.only)?\s*\(", read(tf)))
+    # runs is the hand-judge's call at >=15; the count must stay factual).
+    # 2026-11-07 (wave-2 re-review N6): commented-out test() lines must not
+    # inflate the count - strip /* */ blocks (re.S) and whole-line //
+    # comments (re.M only: with re.S, .* spans newlines and one comment would
+    # strip the rest of the file - probed live, count went 12 -> 0) rather
+    # than full JS_COMMENT, whose mid-line //-in-string spans risk
+    # undercounting real tests.
+    code_text = re.sub(r"/\*.*?\*/", " ", read(tf), flags=re.S)
+    code_text = re.sub(r"^[ \t]*//.*$", " ", code_text, flags=re.M)
+    n = len(re.findall(r"\btest(?:\.only)?\s*\(", code_text))
     if n < 15:
         return "FAIL", f"test file has {n} test() call(s); 12 original + at least 3 " \
                        "regression = at least 15"
@@ -1139,26 +1159,34 @@ def _py_import_names(src):
                 continue
             line = line[end + 3:]
             in_str = None
-        for q in ('"""', "'''"):
-            while q in line:
-                start = line.find(q)
-                end = line.find(q, start + 3)
-                if end == -1:
-                    in_str = q
-                    line = line[:start]
-                    break
-                line = line[:start] + " " + line[end + 3:]
+        # 2026-11-07 (wave-2 re-review N3): handle the EARLIEST triple quote by
+        # position - a fixed for-order let an unpaired """ inside a ''' string
+        # truncate the line before the real closer, hiding later imports
+        while True:
+            cands = [(line.find(q), q) for q in ('"""', "'''")]
+            cands = [(pos, q) for pos, q in cands if pos != -1]
+            if not cands:
+                break
+            pos, q = min(cands)
+            end = line.find(q, pos + 3)
+            if end == -1:
+                in_str = q
+                line = line[:pos]
+                break
+            line = line[:pos] + " " + line[end + 3:]
         line = PY_COMMENT.sub("", line)
-        m = re.match(r"\s*import\s+(.+)$", line)
-        if m:
-            for part in m.group(1).split(","):
-                name = re.match(r"\s*([A-Za-z_][\w.]*)", part)
-                if name:
-                    names.append(name.group(1))
-            continue
-        m = re.match(r"\s*from\s+([A-Za-z_][\w.]*)", line)
-        if m:
-            names.append(m.group(1))
+        # 2026-11-07 (wave-2 re-review N2): semicolon-chained statements
+        for stmt in line.split(";"):
+            m = re.match(r"\s*import\s+(.+)$", stmt)
+            if m:
+                for part in m.group(1).split(","):
+                    name = re.match(r"\s*([A-Za-z_][\w.]*)", part)
+                    if name:
+                        names.append(name.group(1))
+                continue
+            m = re.match(r"\s*from\s+([A-Za-z_][\w.]*)", stmt)
+            if m:
+                names.append(m.group(1))
     return names
 
 
