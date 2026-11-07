@@ -100,6 +100,20 @@ caught, all green after revert, checks.py byte-restored each time:
 Probe-harness note for the next editor: unittest writes OK/FAILED to stderr,
 not stdout - a red-detector that reads only stdout reports every mutation
 "NOT RED" (this cost one wasted probe run on 2026-11-07 before the fix).
+
+Pass 6, 2026-11-07, attacking the SCORE-READY-round hardening (X1/X4, the
+reviewer's non-blocking follow-ups, closed before the final gate):
+  X1 single-line string mask disabled        -> Spec10.test_semicolon_inside_string_is_not_a_statement
+     (no-op assignment; "; import x" in a       + Spec10.test_hash_inside_string_does_not_eat_a_real_import
+     string manufactured a fake statement)
+  X4 comment-secret fallback moved back      -> Spec08.test_html_comment_secret_goes_manual
+     onto the HTML-comment-stripped text
+     (a token in an HTML comment vanished
+     to a silent PASS)
+Probe-quality note: the first X1 mutation replaced the mask with a constant
+string, which destroyed EVERY line equally - no test could distinguish it
+("NOT RED" run recorded here so the shape is not repeated). A mutation must
+change only the guarded behavior; the second attempt was a true no-op.
 """
 import contextlib
 import csv
@@ -927,6 +941,14 @@ class Spec08(FixtureTest):
         res = self.run_checks("08", files)
         self.assertVerdict(res, 6, "MANUAL", "only inside a comment")
 
+    def test_html_comment_secret_goes_manual(self):
+        # 2026-11-07 wave-2 re-review (X4): a token inside an HTML comment used
+        # to vanish with the strip to a silent PASS - the fallback scans raw
+        files = dict(self.FULL)
+        files["index.html"] = "<!-- old example key: sk-" + "a" * 24 + " -->\n<p>x</p>"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "MANUAL", "only inside a comment")
+
 
 # ---------------------------------------------------------------- spec 09
 
@@ -1306,6 +1328,24 @@ class Spec10(FixtureTest):
         files = self.golden_files()
         files["transform.py"] = TRANSFORM_PY.replace(
             "import csv", "x = '''a \"\"\"b'''\nimport requests\nimport csv")
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
+
+    def test_semicolon_inside_string_is_not_a_statement(self):
+        # 2026-11-07 wave-2 re-review (X1): '; import x' inside a string
+        # literal must not manufacture a fake import statement
+        files = self.golden_files()
+        files["transform.py"] = TRANSFORM_PY.replace(
+            "import csv", 'import csv\nprint("step 1; import requests next")')
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "PASS", "all imports stdlib")
+
+    def test_hash_inside_string_does_not_eat_a_real_import(self):
+        # (X3): PY_COMMENT used to eat from the # inside a string through a
+        # real "; import requests" that followed on the same line
+        files = self.golden_files()
+        files["transform.py"] = TRANSFORM_PY.replace(
+            "import csv", 'import csv\nmsg = "use # carefully"; import requests')
         res = self.run_checks("10", files)
         self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
 

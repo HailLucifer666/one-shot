@@ -852,7 +852,8 @@ def spec08(root):
                                                  ".ini", ".cfg"}))
     secret = secret_hit = comment_secret = None
     for p in scanned + [root / ".env"]:
-        text = read(p)
+        raw = read(p)
+        text = raw
         if p.suffix.lower() in {".html", ".htm", ".vue", ".svelte"}:
             text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
         sfx = p.suffix.lower() or (".env" if p.name == ".env" else "")
@@ -861,7 +862,11 @@ def spec08(root):
         if m:
             secret_hit = (p.name, m.group(0))
             break
-        if secret_hit is None and comment_secret is None and SECRET_PAT.search(text):
+        # 2026-11-07 (wave-2 re-review X4): the comment-secret fallback scans
+        # the RAW text - the HTML-comment strip above must not silence a
+        # token-shaped literal inside a comment (it would vanish to a silent
+        # PASS while yaml/env comments prompt MANUAL)
+        if secret_hit is None and comment_secret is None and SECRET_PAT.search(raw):
             comment_secret = p.name
     url_hit = None
     if secret_hit is None:
@@ -1174,6 +1179,12 @@ def _py_import_names(src):
                 line = line[:pos]
                 break
             line = line[:pos] + " " + line[end + 3:]
+        # 2026-11-07 (wave-2 re-review X1/X3): mask single-line strings BEFORE
+        # the comment strip - a "#" inside a string used to eat the rest of the
+        # line including a real "; import x", and a "; import x" inside a
+        # string manufactured a fake statement after the N2 split. Escaped
+        # quotes only over-mask within one line: bounded under-flag.
+        line = re.sub(r'"[^"\n]*"|\'[^\'\n]*\'', " ", line)
         line = PY_COMMENT.sub("", line)
         # 2026-11-07 (wave-2 re-review N2): semicolon-chained statements
         for stmt in line.split(";"):
