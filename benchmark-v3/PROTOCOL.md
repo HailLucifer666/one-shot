@@ -16,7 +16,7 @@ E:\Skill-OneShot\TEst LLM's\<model>\<arm>\<spec>\runN\
 
 - `<model>`: e.g. `glm-5.3-flash`, `sonnet-4.5`, `gpt-5.1`, `ollama-qwen3-8b`, `kilocode-<model>`
 - `<arm>`: `baseline` (without skill) or `skill` (with skill)
-- `<spec>`: `01-landing-page`, `06-calculator`, … `09-brownfield-bugs`, `10-data-transform`, `vague`
+- `<spec>`: `01-landing-page`, `04-slide-deck`, `06-calculator`, … `09-brownfield-bugs`, `10-data-transform`, `vague`
 - `runN`: `run1`, `run2`, …
 
 In shell commands, quote the path (it contains a space and an apostrophe): `cd "E:/Skill-OneShot/TEst LLM's/..."`
@@ -28,7 +28,7 @@ Put the run's entire output there: the project files, screenshots, test output, 
 - **Baseline arm:** the skill must be OUT of the harness catalog. On ZCode and Claude Code, run `bash benchmark-v3/tools/park-skill.sh` first (it moves both installs to staging and verifies). Restore afterward with `restore-skill.sh`. If the skill is present during a baseline run, that run is CONTAMINATED.
 - **Skill arm:** the skill must be installed (restore first if parked). A fresh session per run — never continue an old conversation.
 - **Never edit the spec text between arms.** Both prompts come from PROMPTS.md, prefix-only difference.
-- **Spec 09:** copy `benchmark-v3/starters/09-notes-app/` into the run folder BEFORE starting; the agent works on that copy.
+- **Spec 09:** copy the **contents** of `benchmark-v3/starters/09-notes-app/` into a folder named `notes-app/` in the run folder BEFORE starting (the spec text refers to `notes-app/` in "this directory"); the agent works on that copy.
 - **Spec 10:** nothing to pre-copy — the CSV is embedded in the spec and the agent saves it.
 
 ## The tells (record these for every skill-arm run)
@@ -59,7 +59,7 @@ Missing tells = **INVALID-fingerprint** (the harness shadowed the skill — e.g.
 ## Follow-ups and fix rounds
 
 - The headline metric is the **first run**: score what the first response produced, before any follow-up.
-- If first-run score is 7+/10, you may send fix rounds: one message listing only the failing criteria copied verbatim, up to 5 rounds. Log each round in `fixlog.md` in the run folder (round, what was fixed, categories: missing / broken / generic-looking / ignored-instruction / over-built / regression).
+- If first-run score is 7+/10, you may send fix rounds: one message listing only the failing criteria copied verbatim, up to 5 rounds. Log each round in `fixlog.md` in the run folder (round, what was fixed, categories: missing / broken / generic-looking / ignored-instruction / over-built / regression). If you stop at the cap without reaching 10/10, record the follow-up count as `5 (capped)` in RUN-NOTE so a capped run is distinguishable from one that reached 10/10.
 - If first-run score is below 7/10, record the follow-up count in RUN-NOTE as `>X` (e.g. `>3`) and stop — do not grind it out.
 
 ## RUN-NOTE.md (every run, copy this template)
@@ -86,7 +86,7 @@ A spec discriminates only if the no-skill baseline scores strictly below 90% mea
 
 ## What happens to your runs
 
-Tell me when a pair (or a batch) is done. I score every run: static criteria via the repo's scorer, behavioral criteria from your evidence and RUN-NOTE, then record results in `benchmark-v3/RESULTS.md` (model × arm × spec) with a per-model feedback log — where the skill helps, where it hurts, what it changes. From that we decide what gets hardened, what gets kept, and (much later) what a publishable pre-registered battery looks like.
+Tell me when a pair (or a batch) is done. I score every run: static criteria via the repo's scorer (extended for specs 06–10 in Wave 2 of this pack — do not start a v3 run before that lands), behavioral criteria from your evidence and RUN-NOTE, then record results in `benchmark-v3/RESULTS.md` (created with the first results) (model × arm × spec) with a per-model feedback log — where the skill helps, where it hurts, what it changes. From that we decide what gets hardened, what gets kept, and (much later) what a publishable pre-registered battery looks like.
 
 ## Post-publication candidates (too big for this pack's budget)
 

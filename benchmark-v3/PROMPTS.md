@@ -26,12 +26,12 @@ The spec files live in the repo at `benchmark/specs/`. Copy the whole file, firs
 
 | Spec | File | Mode |
 |---|---|---|
-| 01 | `benchmark/specs/01-landing-page.md` | full + vague |
+| 01 | `benchmark/specs/01-landing-page.md` | full |
 | 04 | `benchmark/specs/04-slide-deck.md` | full |
 | 06 | `benchmark/specs/06-calculator.md` | full |
 | 07 | `benchmark/specs/07-pomodoro.md` | full |
 | 08 | `benchmark/specs/08-expense-splitter.md` | full |
-| 09 | `benchmark/specs/09-brownfield-bugs.md` | full — copy `benchmark-v3/starters/09-notes-app/` into the run folder FIRST (see PROTOCOL.md) |
+| 09 | `benchmark/specs/09-brownfield-bugs.md` | full — copy the **contents** of `benchmark-v3/starters/09-notes-app/` into a folder named `notes-app/` in the run folder FIRST (see PROTOCOL.md) |
 | 10 | `benchmark/specs/10-data-transform.md` | full — the CSV fixture is embedded in the spec; the agent saves it |
 
 ## Vague mode (its own prompt, no spec text)

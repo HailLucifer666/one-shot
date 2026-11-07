@@ -18,7 +18,7 @@ Write a Python 3 command-line tool, `transform.py` — standard library only, no
 ## Acceptance criteria (yes or no)
 
 1. Is the tool a single `transform.py` using only the Python standard library — no pip installs, no third-party imports?
-2. Does `python transform.py expenses.csv report.json` exit 0 and write `report.json`, and does a missing input file exit non-zero with a stderr message naming the file?
+2. Does `python transform.py expenses.csv report.json` exit 0 and write `report.json`, and does a missing input file exit 2 with a stderr message naming the file?
 3. Are `totals_by_currency` correct for this exact CSV — exactly the keys USD, EUR, INR, each rounded to 2 decimals, never summed across currencies?
 4. Are both duplicate-id rows skipped and listed in `skipped_duplicates` with their correct row numbers?
 5. Are all invalid rows excluded from the totals and listed in `invalid_rows`, each with its row number and a specific reason — none silently dropped, none counted as valid?

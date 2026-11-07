@@ -17,7 +17,7 @@ Build a single-page Pomodoro timer called "Tempo" for people who work in focused
 3. When a work session finishes, does a 5:00 short break start, and after the 4th completed work session does a 15:00 long break start — with the cycle position visible somewhere (e.g. "Work 2 of 4")?
 4. With auto-start ON, does the next phase start by itself with the correct duration, and with auto-start OFF does it wait for Start?
 5. While running, does switching to another browser tab show the countdown in the tab title, and does the remaining time stay honest against the wall clock (leaving for 2 minutes and returning shows roughly 2 minutes less, not a stopped or reset timer)?
-6. Does reloading the page mid-session restore the phase, the remaining seconds (within a few seconds of drift), the completed-work count, and the auto-start setting?
+6. Does reloading the page mid-session restore the phase, the remaining seconds (within 5 seconds of drift), the completed-work count, and the auto-start setting?
 7. Does Space toggle Start/Pause, does Pause genuinely stop the countdown (wait 30 seconds while paused — the remaining time must not change), and does Reset return to a fresh 25:00 work session with count 0?
 8. Does Skip advance to the next phase immediately with its correct duration, without counting a skipped work session as completed?
 9. During a full work → break → work transition, does the browser console stay free of errors, and is the current phase always clearly labeled (Work / Short break / Long break)?

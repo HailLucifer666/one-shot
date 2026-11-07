@@ -11,7 +11,7 @@ Copy this file into every run folder as `RUN-NOTE.md` and fill it in. It is the 
 - run state:          (VALID / INVALID-fingerprint / INVALID-aborted / CONTAMINATED)
 - spec:               (01 / 04 / 06 / 07 / 08 / 09 / 10 / vague)
 - date:
-- tokens used:        (from the harness usage display; write "not shown" if unavailable)
+- tokens used:        (from the harness usage display; for INVALID-aborted runs write tokens-so-far at the abort; write "not shown" if unavailable)
 - duration:
 - follow-up prompts:  (count; 0 if none; paste their text below if any)
 - fixlog:             (fixlog.md attached? yes/no)
@@ -38,4 +38,5 @@ Rules reminders:
 
 - Behavioral criteria score only from attached evidence; no attachment = unverifiable (excluded from the denominator, footnoted — never counted as a pass).
 - Below 7/10 first-run: record follow-up count as `>X` and stop.
+- Stopped at the 5-round cap without reaching 10/10: record the count as `5 (capped)`.
 - Run state INVALID-fingerprint → rerun the arm; never count it as the other arm.

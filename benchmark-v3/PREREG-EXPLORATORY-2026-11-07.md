@@ -12,8 +12,8 @@ The v0.1.4 battery tied 10/10 vs 10/10 on GLM 5.3 Flash: a strong model maxes sp
 
 - H-A: On the new specs, GLM 5.3 Flash baselines score strictly below 90% mean first-run on at least 4 of the 6 new/vague cells (06, 07, 08, 09, 10, vague) — i.e. most of the pack discriminates where the old pack ceilinged.
 - H-B: The skill arm's first-run pass rate exceeds the baseline's on the discriminating cells (direction unknown per cell; magnitude not pre-claimed).
-- H-C: The skill arm shows its signature (one-shot-work/ artifacts, self-caught fixes, gate-style limitations) in every valid skill-arm run.
-- H-D: Vague mode discriminates most sharply on the interview-discipline criteria (v1–v5), with baselines inventing details instead of asking.
+- H-C: The skill arm shows its signature (the PROTOCOL tells: a `one-shot-work/` directory, the "one-shot loaded, rigor LEAN/STANDARD/STRICT" line, and a gate-style "Known limitations" section) in every valid skill-arm run.
+- H-D: Vague mode discriminates most sharply on the interview-discipline criteria — items 1–5 of `vague-criteria.md` (clarifying-question count, batching, stated assumptions, no invented facts, honoring answers) — with baselines inventing details instead of asking. *(Dated pre-run clarification 2026-11-07: this hypothesis originally said "criteria (v1–v5)"; no v-prefixed numbering exists in the pack, so it is pinned here to vague-criteria items 1–5 before any run.)*
 
 ## Fixed rules for the exploratory campaign
 

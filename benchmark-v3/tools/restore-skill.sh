@@ -26,8 +26,14 @@ for PAIR in "$ZCODE_DIR" "$CLAUDE_DIR"; do
   fi
 done
 
-# Postcondition 1: nothing left parked.
-LEFTOVERS=$(find "$STAGING" -maxdepth 1 -mindepth 1 2>/dev/null | wc -l)
+# Postcondition 1: nothing left parked. The staging dir may legitimately not
+# exist yet (nothing ever parked) — find would exit 1 and pipefail would kill
+# the script silently, so guard on the directory first.
+if [ -d "$STAGING" ]; then
+  LEFTOVERS=$(find "$STAGING" -maxdepth 1 -mindepth 1 2>/dev/null | wc -l)
+else
+  LEFTOVERS=0
+fi
 if [ "$LEFTOVERS" -ne 0 ]; then
   echo "WARNING: $LEFTOVERS item(s) still parked in $STAGING:" >&2
   find "$STAGING" -maxdepth 1 -mindepth 1 >&2
@@ -53,5 +59,13 @@ if [ "$FAIL" -ne 0 ]; then
   exit 1
 fi
 
-echo -e "RESTORE: OK — skill is back in every catalog.\n$RESTORED"
+if [ -z "$RESTORED" ]; then
+  if [ -d "$ZCODE_DIR" ] || [ -d "$CLAUDE_DIR" ]; then
+    echo -e "RESTORE: OK — nothing was parked, and the installs are already in place:\n$RESTORED"
+  else
+    echo -e "RESTORE: OK — nothing was parked and no installs found at:\n  $ZCODE_DIR\n  $CLAUDE_DIR\n(install the skill before running a skill arm)"
+  fi
+else
+  echo -e "RESTORE: OK — skill is back in the ZCode and Claude Code catalogs.\n$RESTORED"
+fi
 echo "Skill arms are now clean."

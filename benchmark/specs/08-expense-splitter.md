@@ -18,7 +18,7 @@ Build a tiny expense-splitting app for a group trip, called "SplitBird". Two par
 1. Does the server, the frontend, and the test suite exist, and does `README.md` give the exact commands to run the tests and start the server?
 2. Do all four endpoints respond as specified, with invalid input (negative amount, unknown currency, empty payer, malformed JSON) returning HTTP 400 with a reason in the body — never a 500?
 3. Are balances computed per currency? Adding "A paid 100 USD" and "B paid 100 EUR" must produce separate USD and EUR figures — never a combined 200.
-4. With A paid 90, B paid 30, C paid 0 (equal three-way split, one currency), does `POST /settle` return exactly the minimal transfers — A receives 30, B pays A 10, C pays A 20 (or an equivalent minimal set) — with 2-decimal amounts?
+4. With A paid 90, B paid 30, C paid 0 (equal three-way split, one currency), does `POST /settle` return exactly the minimal transfers — A receives 50, B pays A 10, C pays A 40 (or an equivalent minimal set) — with 2-decimal amounts?
 5. Are there at least 8 automated API tests, all green via the README command, and do they pass with no internet connection and no API keys?
 6. Does the server source contain no calls to external hosts, no hardcoded API keys, and no tokens?
 7. Does the frontend form add an expense that appears in the list immediately without a page reload, and is the page usable at 360px width with no horizontal scrolling?

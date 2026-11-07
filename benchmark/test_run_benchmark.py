@@ -13,6 +13,13 @@ fails exactly there, for that reason; the trim turned it green. 2026-11-03.
 2026-11-05 (audit): the B9 sentinel gate had only ever been probed by hand,
 never pinned as a test; these cover it plus the skip reporting, malformed-
 record robustness, the censored median and the `complete` subcommand.
+
+2026-11-07 (v3 pack): test_scaffolds_into_alternate_runs_dir went RED on
+master+specs when the five v3 spec files landed (hand-typed count 5 vs the
+10 files init() legitimately scaffolds) - replaced with a derived assertion
+(folders == the runner's own spec glob). Mutation probe run 2026-11-07:
+init()'s glob narrowed to `[:5]` (verified applied) → exactly that test
+FAILs; reverted → 17 OK. A count-based assertion cannot pass that probe.
 """
 import contextlib
 import io
@@ -180,7 +187,14 @@ class TestInit(unittest.TestCase):
             run_benchmark.init("m", "skill", 2, tmp.name)
         root = Path(tmp.name) / "m" / "skill"
         specs = sorted(p.name for p in root.iterdir())
-        self.assertEqual(len(specs), 5, specs)
+        # 2026-11-07: derived, not hand-typed. The count was pinned at 5 and
+        # went red the day the v3 pack added specs 06-10 — init() scaffolds
+        # one folder per spec file it globs, so assert the folder list equals
+        # the live glob the runner itself uses. A new spec file must move this
+        # test's expectation automatically, never by editing a magic number.
+        expected = sorted(p.stem for p in (run_benchmark.ROOT / "specs").glob("*.md"))
+        self.assertTrue(expected, "no spec files found - the glob must never be empty")
+        self.assertEqual(specs, expected, specs)
         first = root / "01-landing-page" / "run1"
         self.assertTrue((first / "RESULT.json").is_file())
         self.assertTrue((first / "SPEC.md").is_file())

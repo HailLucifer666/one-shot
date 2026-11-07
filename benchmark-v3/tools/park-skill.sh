@@ -5,7 +5,8 @@
 #
 # Why this exists: the skill's description auto-triggers on build asks, so a
 # baseline run with the skill still installed is CONTAMINATED (pre-registered
-# rule, benchmark-hard/PRE-REGISTERED-2026-11-01.md decision 4).
+# rule, benchmark-hard/PRE-REGISTERED-2026-11-01.md, "Tool state before the
+# runs": skill parked out of the harness catalog before spawning).
 #
 # Env overrides for testing (default to the real locations):
 #   PARK_ZCODE_DIR, PARK_CLAUDE_DIR, PARK_STAGING_DIR
@@ -43,8 +44,13 @@ done
 
 if [ "$FAIL" -ne 0 ]; then
   echo "PARK: FAILED — fix the errors above before running any baseline arm." >&2
+  # Tell the runner where a partially-moved install is sitting, or a restore
+  # will silently miss it.
+  echo -e "Progress so far (moved copies are in $STAGING):\n$MOVED" >&2
   exit 1
 fi
 
-echo -e "PARK: OK — skill is out of every catalog.\n$MOVED"
-echo "Baseline arms are now clean. Restore afterward with restore-skill.sh."
+echo -e "PARK: OK — skill is out of the ZCode and Claude Code catalogs.\n$MOVED"
+echo "Baseline arms are now clean. Restore afterward with restore-skill.sh.
+Note: this parks only ZCode and Claude Code installs; other harnesses' skill
+copies (kilocode, opencode, ...) are your responsibility before a baseline arm."
