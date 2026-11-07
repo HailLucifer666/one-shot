@@ -544,10 +544,26 @@ def spec05(root):
 
 ATTR_REF = re.compile(
     r"""[\s](?:srcset|src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))""", re.I)
-NET_CALL = re.compile(r"\bfetch\s*\(|XMLHttpRequest|\bWebSocket\b|\bimport\s*\(")
+NET_CALL = re.compile(r"\bfetch\s*\(|XMLHttpRequest|\bWebSocket\b|\bimport\s*\(|@import\b")
 DYNAMIC_EXEC = re.compile(
-    r"eval\s*\(|new\s+Function\s*\(|setTimeout\s*\(\s*[\"']|setInterval\s*\(\s*[\"']")
+    r"eval\s*\(|\bFunction\s*\(|setTimeout\s*\(\s*[\"'`]|setInterval\s*\(\s*[\"'`]")
 BENIGN_SCHEMES = ("mailto:", "tel:")
+# 2026-11-07 (wave-2 review): JS comment spans, for classifying denylist hits.
+# A hit inside a comment cannot fail a criterion - the skill arm writes
+# self-checkers whose comments name the anti-pattern they grep for (the
+# spec01 c7 lesson, 2026-11-06). Hits in code stay conclusive. A "//" inside
+# a string literal (e.g. "https://...") can create a false span; that only
+# ever downgrades a FAIL to MANUAL, never upgrades a PASS.
+JS_COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+PY_COMMENT = re.compile(r"#[^\n]*")
+
+
+def comment_pattern(suffix):
+    return PY_COMMENT if suffix == ".py" else JS_COMMENT
+
+
+def strip_comments(text, suffix):
+    return comment_pattern(suffix).sub(" ", text)
 
 
 def external_refs(html):
@@ -578,27 +594,40 @@ def single_file_c1(root):
     """Criterion 1 for specs 06/07: exactly one html file, no external
     references, no network or dynamic-import calls. Prints the criterion-1
     line unless the project has no html at all (the caller then prints the
-    all-manual block including line 1). Returns the html path or None."""
+    all-manual block including line 1). Returns the html path or None.
+
+    2026-11-07 (wave-2 review): HTML comments are stripped before scanning
+    (the module docstring's contract - commented-out markup cannot fail a
+    check), data:-URI @imports are exempt, and hits that live only inside
+    JS comments are MANUAL, never FAIL."""
     htmls = list(iter_files(root, {".html", ".htm"}))
     if not htmls:
         return None
-    text = read(htmls[0])
     if len(htmls) > 1:
         names = ", ".join(p.name for p in htmls[:4])
         out(1, "FAIL", f"{len(htmls)} html files found ({names}) - "
                        "the app must be one index.html")
         return htmls[0]
-    refs = external_refs(text)
+    text = re.sub(r"<!--.*?-->", " ", read(htmls[0]), flags=re.S)
+    # a data:-URI @import imports content, not a file or host - exempt it
+    text = re.sub(r"@import\s+(?:url\s*\(\s*)?[\"']?data:[^\"')\n]*", " ", text, flags=re.I)
+    code_text = strip_comments(text, ".html")
+    name = htmls[0].name
+    refs = external_refs(code_text)
     if refs:
-        out(1, "FAIL", f"external reference(s) in {htmls[0].name}: " + ", ".join(refs[:3]))
+        out(1, "FAIL", f"external reference(s) in {name}: " + ", ".join(refs[:3]))
         return htmls[0]
-    net = NET_CALL.search(text)
+    net = NET_CALL.search(code_text)
     if net:
-        line = re.search(r"^[^\n]*" + re.escape(net.group(0)) + r"[^\n]*", text, re.M)
-        out(1, "FAIL", f"network or dynamic-import call in {htmls[0].name}: "
+        line = re.search(r"^[^\n]*" + re.escape(net.group(0)) + r"[^\n]*", code_text, re.M)
+        out(1, "FAIL", f"network or dynamic-import call in {name}: "
                        f"'{(line.group(0) if line else net.group(0)).strip()[:70]}'")
         return htmls[0]
-    out(1, "PASS", f"one {htmls[0].name}, no external references (denylist scan)")
+    if external_refs(text) or NET_CALL.search(text):
+        out(1, "MANUAL", f"external reference or network call appears only inside a "
+                         f"comment in {name} - confirm nothing real remains")
+        return htmls[0]
+    out(1, "PASS", f"one {name}, no external references (denylist scan)")
     return htmls[0]
 
 
@@ -624,15 +653,36 @@ def spec06(root):
                  "it must stay free of errors"),
         ])
         return
-    src = source_text(root)
-    m = DYNAMIC_EXEC.search(src)
-    if m:
-        line = re.search(r"^[^\n]*" + re.escape(m.group(0)) + r"[^\n]*", src, re.M)
-        out(2, "FAIL", f"dynamic code execution: "
+    # 2026-11-07 (wave-2 review): the denylist catches bare Function( calls as
+    # well as new Function(, and hits are classified by comment spans - a hit
+    # in real code is conclusive FAIL, a hit only inside a comment (often a
+    # self-checker naming the anti-pattern) is MANUAL. Priority: a code hit in
+    # the app html beats everything; then a comment-only hit in the app html;
+    # then a hit in a non-app file (usually a self-checker).
+    verdict = None
+    for p in iter_files(root, {".html", ".htm"}):
+        text = re.sub(r"<!--.*?-->", " ", read(p), flags=re.S)
+        code_text = strip_comments(text, p.suffix.lower())
+        m = DYNAMIC_EXEC.search(code_text)
+        if m:
+            line = re.search(r"^[^\n]*" + re.escape(m.group(0)) + r"[^\n]*",
+                             code_text, re.M)
+            verdict = ("FAIL", f"dynamic code execution in {p.name}: "
                        f"'{(line.group(0) if line else m.group(0)).strip()[:70]}'")
-    else:
-        out(2, "PASS", "no eval / new Function / string-argument setTimeout or setInterval "
-                       "in source (denylist scan - absence of a pattern is evidence, not proof)")
+            break
+        if DYNAMIC_EXEC.search(text) and verdict is None:
+            verdict = ("MANUAL", f"dynamic-exec pattern appears only inside a comment "
+                       f"in {p.name} - confirm no real dynamic execution")
+    if verdict is None or verdict[0] == "MANUAL":
+        for p in iter_files(root, CODE_EXTS - {".html", ".htm"}):
+            if DYNAMIC_EXEC.search(strip_comments(read(p), p.suffix.lower())):
+                verdict = ("MANUAL", f"dynamic-exec pattern in non-app file {p.name} - "
+                           "confirm the calculator's html contains none")
+                break
+    if verdict is None:
+        verdict = ("PASS", "no eval / Function( / string-argument setTimeout or setInterval "
+                   "in code (denylist scan - absence of a pattern is evidence, not proof)")
+    out(2, verdict[0], verdict[1])
     manual_block([
         (3, "type 2 + 3 × 4 then = - display must show 14, not 20 (operator precedence)"),
         (4, "type 0.1 + 0.2 = - display must show exactly 0.3; no 0.30000000000000004 "
@@ -677,17 +727,33 @@ def spec07(root):
                  "2 minutes, return, ~2 minutes must be gone)"),
         ])
         return
-    src = source_text(root)
     # quote the strongest evidence first: a wall-clock API call, else a
     # deadline-shaped variable name. A grep can never prove the mechanism.
-    code_m = re.search(r"^[^\n]*(?:\bDate\.now\(|\bperformance\.now\("
-                       r"|\bnew Date\([^)]*\)\.getTime\()[^\n]*", src, re.I | re.M)
-    word_m = re.search(r"^[^\n]*(?:deadline|endTime|endsAt|targetTime)[^\n]*",
-                       src, re.I | re.M)
+    # 2026-11-07 (wave-2 review): prefer a quote from real code - a hit that
+    # lives only inside a comment is noted as such instead of being quoted as
+    # the mechanism.
+    code_m = word_m = comment_m = None
+    for p in iter_files(root, CODE_EXTS):
+        text = read(p)
+        if p.suffix.lower() in {".html", ".htm"}:
+            text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
+        code_text = strip_comments(text, p.suffix.lower())
+        code_m = code_m or re.search(r"^[^\n]*(?:\bDate\.now\(|\bperformance\.now\("
+                                     r"|\bnew Date\([^)]*\)\.getTime\()[^\n]*",
+                                     code_text, re.I | re.M)
+        word_m = word_m or re.search(r"^[^\n]*(?:deadline|endTime|endsAt|targetTime)[^\n]*",
+                                     code_text, re.I | re.M)
+        if code_m is None and word_m is None and comment_m is None:
+            comment_m = re.search(r"^[^\n]*(?:\bDate\.now\(|deadline|endTime)[^\n]*",
+                                  text, re.I | re.M)
     if code_m or word_m:
         quote = (code_m or word_m).group(0).strip()[:70]
         out(10, "MANUAL", f"wall-clock pattern found: '{quote}' - confirm against the wall "
                           "clock: hide the tab 2 minutes, return, ~2 minutes must be gone")
+    elif comment_m:
+        out(10, "MANUAL", "the only wall-clock-shaped match is inside a comment - the timer "
+                          "may count interval ticks; verify against the wall clock (hide "
+                          "the tab 2 minutes, return, ~2 minutes must be gone)")
     else:
         out(10, "MANUAL", "no wall-clock deadline pattern found statically - timer may count "
                           "interval ticks; verify against the wall clock (hide the tab "
@@ -714,6 +780,10 @@ def spec07(root):
 # ------------------------------------------------------------------ spec 08
 
 TEST_FILE_PAT = re.compile(r"(?:^|/)test_|_test\.|\.test\.|\.spec\.|(?:^|/)tests?/", re.I)
+SECRET_PAT = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}"
+                        r"|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}"
+                        r"|github_pat_[A-Za-z0-9_]{30,}|AIza[0-9A-Za-z_\-]{35}"
+                        r"|xox[baprs]-[A-Za-z0-9-]{10,}")
 
 
 def spec08(root):
@@ -726,10 +796,13 @@ def spec08(root):
     test_cmd = run_cmd = None
     if readme:
         text = read(readme)
-        test_cmd = re.search(r"\bnpm test\b|\bnpx\s+\S+|\bpytest\b"
-                             r"|\bpython\s+-m\s+pytest\b|\bpython\s+-m\s+unittest\b", text)
+        # 2026-11-07 (wave-2 review): python3? covers python3 invocations, and
+        # node's built-in runner (node --test) counts as a test command - the
+        # natural choice for the zero-framework Node app spec 08 invites.
+        test_cmd = re.search(r"\bnpm test\b|\bnpx\s+\S+|\bpytest\b|\bnode\s+--test\b"
+                             r"|\bpython3?\s+-m\s+pytest\b|\bpython3?\s+-m\s+unittest\b", text)
         run_cmd = re.search(r"\bnpm start\b|\buvicorn\b|\bflask run\b"
-                            r"|\bpython\s+(?!-m)\S+|\bnode\s+(?!--test)\S+", text)
+                            r"|\bpython3?\s+(?!-m)\S+|\bnode\s+(?!--test)\S+", text)
     if not readme:
         c1 = ("FAIL", "README.md missing at project root")
     elif not test_cmd:
@@ -762,31 +835,48 @@ def spec08(root):
         c5 = ("MANUAL", f"{count} test function(s) in {len(tests)} file(s) - run the README "
                         "command offline and paste the green output")
 
-    scanned = list(iter_files(root, SCAN_EXTS))
-    blob = "\n".join(read(p) for p in scanned) + read(root / ".env")
-    secret = re.search(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}"
-                       r"|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}"
-                       r"|github_pat_[A-Za-z0-9_]{30,}|AIza[0-9A-Za-z_\-]{35}"
-                       r"|xox[baprs]-[A-Za-z0-9-]{10,}", blob)
+    # 2026-11-07 (wave-2 review): criterion 6 judges the SERVER SOURCE, so the
+    # secret scan covers server source + config files - not .md/.txt (a README
+    # example naming a token shape is documentation, not a committed key).
+    # Hits are classified by comment spans: a hit in real code is FAIL, a hit
+    # only inside a comment is MANUAL (spec02's scan keeps its own broader,
+    # already-pinned scope - the two criteria differ, so their scans do too).
+    scanned = list(iter_files(root, CODE_EXTS | {".json", ".yaml", ".yml",
+                                                 ".ini", ".cfg"}))
+    secret = secret_hit = comment_secret = None
+    for p in scanned + [root / ".env"]:
+        text = read(p)
+        code_text = strip_comments(text, p.suffix.lower())
+        m = SECRET_PAT.search(code_text)
+        if m:
+            secret_hit = (p.name, m.group(0))
+            break
+        if secret_hit is None and comment_secret is None and SECRET_PAT.search(text):
+            comment_secret = p.name
     url_hit = None
-    if not secret:
+    if secret_hit is None:
         for p in all_src:
             for m in re.finditer(r"https?://[^\s\"'<>\\)]+", read(p)):
-                host = m.group(0).split("://", 1)[1].split("/")[0]
-                if not host.lower().startswith(("localhost", "127.0.0.1", "0.0.0.0")):
+                host = m.group(0).split("://", 1)[1].split("/")[0].split(":")[0].lower()
+                if not (host == "localhost" or host == "0.0.0.0" or host == "::1"
+                        or host.startswith("127.")):
                     url_hit = m.group(0)
                     break
             if url_hit:
                 break
-    if secret:
-        c6 = ("FAIL", f"secret-like literal matched pattern '{secret.group(0)[:12]}...'")
+    if secret_hit:
+        c6 = ("FAIL", f"secret-like literal in {secret_hit[0]}: "
+                      f"'{secret_hit[1][:12]}...'")
+    elif comment_secret:
+        c6 = ("MANUAL", f"secret-like pattern appears only inside a comment in "
+                        f"{comment_secret} - confirm it is documentation, not a key")
     elif url_hit:
         c6 = ("MANUAL", f"URL literal found: '{url_hit[:70]}' - confirm it is not an "
                         "external call")
     else:
-        c6 = ("PASS", f"no secret patterns in {len(scanned)} scanned file(s) and no external "
-                      f"host URLs in server source (denylist scan - absence of a pattern is "
-                      f"evidence, not proof)")
+        c6 = ("PASS", f"no secret patterns in {len(scanned)} server-source/config file(s) "
+                      f"and no external host URLs in server source (denylist scan - "
+                      f"absence of a pattern is evidence, not proof)")
 
     store = re.search(r"^[^\n]*(?:sqlite|json|writeFile|\bopen\(|shutil|\bdump\b)[^\n]*",
                       "\n".join(read(p) for p in all_src), re.I | re.M)
@@ -838,9 +928,15 @@ def _brownfield_c2(root):
     if not manifest_path.is_file():
         return "FAIL", "manifest.json is gone - the starter's tamper guard cannot run"
     pristine = PRISTINE_STARTER / "manifest.json"
-    anchored = pristine.is_file()
-    if anchored and manifest_path.read_bytes() != pristine.read_bytes():
-        return "FAIL", "manifest.json was edited - the tamper guard itself"
+    anchored = False
+    if pristine.is_file():
+        try:
+            differ = manifest_path.read_bytes() != pristine.read_bytes()
+        except OSError:
+            differ = None   # unreadable pristine = unanchored, never a guess
+        if differ:
+            return "FAIL", "manifest.json was edited - the tamper guard itself"
+        anchored = differ is not None
     try:
         entries = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
@@ -870,8 +966,10 @@ def _brownfield_c2(root):
         if SKIP_DIRS & set(parts[:-1]):
             continue
         rel = p.relative_to(root).as_posix()
+        # 2026-11-07 (wave-2 review): only the ROOT data.json is runtime state;
+        # a nested same-named file is just an unlisted file.
         if rel not in listed and rel not in BROWNFIELD_WHITELIST \
-                and rel != "manifest.json" and p.name != "data.json":
+                and rel != "manifest.json" and rel != "data.json":
             unlisted.append(rel)
     if unlisted:
         more = f" (+{len(unlisted) - 5} more)" if len(unlisted) > 5 else ""
@@ -890,18 +988,22 @@ def _brownfield_c6(root):
     tf = root / "tests" / "notes.test.js"
     if not tf.is_file():
         return "FAIL", "tests/notes.test.js missing - the suite cannot be judged"
-    n = len(re.findall(r"\btest\s*\(", read(tf)))
+    # test.only( counts as a test definition (the file's own defect if it never
+    # runs is the hand-judge's call at >=15; the count must stay factual)
+    n = len(re.findall(r"\btest(?:\.only)?\s*\(", read(tf)))
     if n < 15:
-        return "FAIL", f"test file has {n} test(s); 12 original + at least 3 regression " \
-                       "= at least 15"
-    return "MANUAL", f"{n} tests counted (12 original + >=3 new) - confirm each new test was " \
-                     "revert-verified (revert only that bug's fix, watch it fail, restore) " \
-                     "and all pass"
+        return "FAIL", f"test file has {n} test() call(s); 12 original + at least 3 " \
+                       "regression = at least 15"
+    return "MANUAL", f"{n} test() calls counted (12 original + >=3 new) - confirm each new " \
+                     "test was revert-verified (revert only that bug's fix, watch it fail, " \
+                     "restore) and all pass"
 
 
 def _brownfield_c7(root):
     """package.json byte-identity, judged against the PRISTINE manifest when it
-    is reachable - an edited run manifest must never authenticate its own edit."""
+    is reachable. 2026-11-07 (wave-2 review): an unreachable pristine manifest
+    is MANUAL - falling back to the run's own manifest let an edited manifest
+    authenticate its own edit (self-auth PASS, probed live)."""
     pkg = root / "package.json"
     if not pkg.is_file():
         return "FAIL", "package.json missing - the zero-new-dependencies rule cannot hold"
@@ -910,12 +1012,6 @@ def _brownfield_c7(root):
     if pristine.is_file():
         try:
             recorded = json.loads(pristine.read_text(encoding="utf-8")).get("package.json")
-        except (json.JSONDecodeError, OSError, AttributeError):
-            recorded = None
-    if recorded is None:
-        try:
-            recorded = json.loads(
-                (root / "manifest.json").read_text(encoding="utf-8")).get("package.json")
         except (json.JSONDecodeError, OSError, AttributeError):
             recorded = None
     if recorded is None:
@@ -1028,6 +1124,44 @@ def _spec10_locate(root, name, exts):
     return next((p for p in iter_files(root, exts) if p.name == name), None)
 
 
+def _py_import_names(src):
+    """Top-level module names from import statements. 2026-11-07 (wave-2
+    review): multi-imports yield every comma-separated name (import csv,
+    requests used to pass with only csv seen), 'as' aliases are stripped, and
+    a match that survives only inside a triple-quoted string or a # comment is
+    not an import (a docstring mentioning one must not false-FAIL)."""
+    names = []
+    in_str = None
+    for line in src.splitlines():
+        if in_str:
+            end = line.find(in_str)
+            if end == -1:
+                continue
+            line = line[end + 3:]
+            in_str = None
+        for q in ('"""', "'''"):
+            while q in line:
+                start = line.find(q)
+                end = line.find(q, start + 3)
+                if end == -1:
+                    in_str = q
+                    line = line[:start]
+                    break
+                line = line[:start] + " " + line[end + 3:]
+        line = PY_COMMENT.sub("", line)
+        m = re.match(r"\s*import\s+(.+)$", line)
+        if m:
+            for part in m.group(1).split(","):
+                name = re.match(r"\s*([A-Za-z_][\w.]*)", part)
+                if name:
+                    names.append(name.group(1))
+            continue
+        m = re.match(r"\s*from\s+([A-Za-z_][\w.]*)", line)
+        if m:
+            names.append(m.group(1))
+    return names
+
+
 def _spec10_c3(report):
     got = report.get("totals_by_currency")
     if not isinstance(got, dict):
@@ -1039,10 +1173,13 @@ def _spec10_c3(report):
     for cur in sorted(SPEC10_GOLDEN_TOTALS):
         want = SPEC10_GOLDEN_TOTALS[cur]
         try:
-            have = round(float(got[cur]), 2)
+            have = float(got[cur])
         except (TypeError, ValueError):
             return False, ("FAIL", f"{cur} total missing or not a number (golden {want})")
-        if abs(have - want) > 0.005:
+        # 2026-11-07 (wave-2 review): 1e-6 absorbs float noise but a total not
+        # rounded to 2 decimals (a spec requirement) no longer rides the
+        # tolerance (0.005 admitted 2300.485 as 2300.49).
+        if abs(have - want) > 1e-6:
             return False, ("FAIL", f"{cur} total {have} != golden {want}")
     return True, ("PASS", "USD 2300.49, EUR 3734.56, INR 65500.75 match the golden")
 
@@ -1057,6 +1194,10 @@ def _spec10_c4(report):
             rows[int(e["row"])] = str(e.get("id", ""))
         except (KeyError, TypeError, ValueError):
             return "FAIL", f"skipped_duplicates entry malformed: {str(e)[:60]}"
+    # 2026-11-07 (wave-2 review): duplicate row entries must not collapse
+    if len(rows) != len(got):
+        return "FAIL", f"skipped_duplicates lists {len(got)} entries for {len(rows)} " \
+                       "row(s) - duplicate row numbers"
     if rows == SPEC10_GOLDEN_SKIPPED:
         return "PASS", "rows 5 (E001), 13 (E010)"
     return "FAIL", f"skipped rows {sorted(rows.items())} != golden " \
@@ -1079,6 +1220,10 @@ def _spec10_c5(report):
     if set(rows) != SPEC10_GOLDEN_INVALID:
         return "FAIL", f"invalid rows {sorted(set(rows))} != golden " \
                        f"{sorted(SPEC10_GOLDEN_INVALID)}"
+    # 2026-11-07 (wave-2 review): duplicate row entries must not collapse
+    if len(rows) != len(set(rows)):
+        return "FAIL", f"invalid_rows lists {len(rows)} entries for " \
+                       f"{len(set(rows))} row(s) - duplicate row numbers"
     if bare:
         return "MANUAL", f"row {bare[0]} listed with no reason text - confirm the reason " \
                          "is specific"
@@ -1126,8 +1271,8 @@ def spec10(root):
         src = read(tp)
         stdlib = _stdlib_names()
         bad = []
-        for m in re.finditer(r"^\s*(?:import|from)\s+([A-Za-z_][\w.]*)", src, re.M):
-            top = m.group(1).split(".")[0]
+        for name in _py_import_names(src):
+            top = name.split(".")[0]
             if top != tp.stem and top not in stdlib:
                 bad.append(top)
         if bad:

@@ -66,6 +66,23 @@ Also caught by the CLI smoke, not a mutation: the spec 06/10 criterion text
 contains U+232B/U+20B9 which cp1252 cannot encode - the CLI crashed mid-run
 (6 of 10 lines, exit 1). main() now reconfigures stdout to backslashreplace;
 pinned deterministically by Cli.test_non_ascii_output_never_crashes_the_cli.
+
+Pass 4, 2026-11-07, attacking the wave-2 review-fix guards themselves (9 runs,
+all caught, all green after revert; same temp-dir driver, byte-exact restore):
+  W1 comment classification disabled         -> Spec06.test_dynamic_exec_only_in_comment_goes_manual
+     (strip_comments returns text unchanged)  + Spec08.test_comment_only_secret_goes_manual
+  W2 bare-Function pattern reverted to       -> Spec06.test_bare_function_call_fails
+     new\s+Function only
+  W3 @import dropped from NET_CALL           -> Spec06.test_css_import_fails
+  W4 multi-import parsed first-name-only     -> Spec10.test_multi_import_caught
+  W5 c7 self-auth fallback to the run's      -> Spec09.test_pristine_unreachable_c7_manual
+     own manifest restored (the exact hole
+     the reviewer probed live)
+  W6 golden tolerance back to 0.005          -> Spec10.test_unrounded_total_fails
+  W7 python3? reverted to python? in the     -> Spec08.test_python3_readme_passes
+     spec08 README run-command regex
+  W8 data.json exempted by NAME at any       -> Spec09.test_nested_data_json_fails_unlisted
+     depth instead of root-only
 """
 import contextlib
 import csv
@@ -624,6 +641,52 @@ class Spec06(FixtureTest):
         for n in range(1, 11):
             self.assertVerdict(res, n, "MANUAL")
 
+    # --- 2026-11-07 wave-2 review fixes (findings 1-3, 5) ---
+
+    def test_bare_function_call_fails(self):
+        # bare Function("...")() is dynamic code execution without `new`
+        html = CALC_HTML.replace("function parseTokens(e) { return 0; }",
+                                 'function parseTokens(e) { return Function("return 2 + 2")(); }')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 2, "FAIL", "Function(")
+
+    def test_dynamic_exec_only_in_comment_goes_manual(self):
+        # a self-checker's comment naming the anti-pattern must not FAIL (the
+        # spec01 c7 arm-bias lesson); it is evidence, not execution
+        html = CALC_HTML.replace("function parseTokens(e) { return 0; }",
+                                 "// no eval() or Function() here - hand-parsed\n"
+                                 "function parseTokens(e) { return 0; }")
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 2, "MANUAL", "only inside a comment")
+
+    def test_commented_out_cdn_does_not_fail_c1(self):
+        # the module docstring's contract: commented-out markup cannot fail a check
+        html = CALC_HTML.replace(
+            "<head>",
+            '<head><!-- old layout: <link rel="stylesheet" href="https://cdn.example/x.css"> -->')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "PASS", "no external references")
+
+    def test_js_comment_reference_goes_manual_c1(self):
+        # a commented-out <link> inside a script block: dead markup in a JS
+        # comment is evidence (MANUAL), never a conclusive FAIL
+        html = CALC_HTML.replace(
+            "<style>",
+            '<script>/* old fallback: <link href="https://cdn.example/x.css"> */</script>'
+            "<style>")
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "MANUAL", "only inside a comment")
+
+    def test_css_import_fails(self):
+        html = CALC_HTML.replace("<style>", '<style>@import url("theme.css");')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "FAIL", "@import")
+
+    def test_css_import_data_uri_passes(self):
+        html = CALC_HTML.replace("<style>", '<style>@import url("data:text/css,body{}");')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "PASS", "no external references")
+
 
 # ---------------------------------------------------------------- spec 07
 
@@ -676,6 +739,21 @@ setInterval(() => { remaining -= 1; render(); }, 1000);
         html = POMO_HTML.replace("<script>", '<script src="timer.js">')
         res = self.run_checks("07", {"index.html": html, "timer.js": "tick();"})
         self.assertVerdict(res, 1, "FAIL", "timer.js")
+
+    def test_comment_only_wall_clock_is_flagged(self):
+        # 2026-11-07 wave-2 review (finding 12): a comment naming Date.now must
+        # not be quoted as the mechanism - the verdict says so instead
+        tail = POMO_TAIL.replace(
+            "remaining = Math.max(0, Math.round((endsAt - Date.now()) / 1000));",
+            "remaining = remaining - 1;")
+        tail = tail.replace("let endsAt = null;",
+                            "// no Date.now(), no deadline here - interval ticks only\n")
+        self.assertNotEqual(tail, POMO_TAIL)  # mutations applied
+        html = POMO_HTML.replace(POMO_TAIL, tail)
+        res = self.run_checks("07", {"index.html": html})
+        self.assertTenPrinted(res)
+        self.assertVerdict(res, 10, "MANUAL", "inside a comment")
+        self.assertNotIn("wall-clock pattern found: '//", res[10][1])
 
 
 # ---------------------------------------------------------------- spec 08
@@ -772,6 +850,42 @@ class Spec08(FixtureTest):
         res = self.run_checks("08", files)
         self.assertVerdict(res, 1, "FAIL", "README.md missing")
 
+    # --- 2026-11-07 wave-2 review fixes (findings 6, 11, 15) ---
+
+    def test_python3_readme_passes(self):
+        files = dict(self.FULL)
+        files["README.md"] = "# SplitBird\nTest: `python3 -m pytest`\nRun: `python3 app.py`\n"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 1, "PASS", "run command")
+
+    def test_node_test_readme_passes(self):
+        files = dict(self.FULL)
+        files["README.md"] = "# SplitBird\nTest: `node --test tests/`\nRun: `npm start`\n"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 1, "PASS", "run command")
+
+    def test_readme_secret_is_not_a_fail(self):
+        # criterion 6 judges the server source; a README naming the token
+        # shape is documentation, not a committed key
+        files = dict(self.FULL)
+        files["README.md"] = SPLIT_README + \
+            "\n(never commit something like sk-abcdefghijklmnopqrstuvwx)\n"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "PASS", "denylist scan")
+
+    def test_comment_only_secret_goes_manual(self):
+        files = dict(self.FULL)
+        files["app.py"] = SPLIT_APP + \
+            "# never hardcode something like sk-abcdefghijklmnopqrstuvwx\n"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "MANUAL", "only inside a comment")
+
+    def test_localhost_subdomain_is_a_hit(self):
+        files = dict(self.FULL)
+        files["app.py"] = SPLIT_APP + 'CALLBACK = "http://localhost.evil.com/x"\n'
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "MANUAL", "URL literal found")
+
 
 # ---------------------------------------------------------------- spec 09
 
@@ -793,7 +907,7 @@ class Spec09(FixtureTest):
                            "7/7 manifest files byte-identical (whitelist: server.js, "
                            "tests/notes.test.js, NOTES.md)")
         self.assertVerdict(res, 7, "PASS", "package.json byte-identical")
-        self.assertVerdict(res, 6, "FAIL", "test file has 12 test(s)")
+        self.assertVerdict(res, 6, "FAIL", "12 test() call(s)")
         self.assertVerdict(res, 8, "FAIL", "NOTES.md missing - the spec requires it")
         self.assertVerdict(res, 3, "MANUAL", "Bug A (dates)")
         self.assertVerdict(res, 4, "MANUAL", "Shopping ToDo list")
@@ -841,8 +955,39 @@ class Spec09(FixtureTest):
                                          b'test("regression B", () => {});\n'
                                          b'test("regression C", () => {});\n')
         res = self.run_checks("09", files)
-        self.assertVerdict(res, 6, "MANUAL", "15 tests counted")
+        self.assertVerdict(res, 6, "MANUAL", "15 test() calls counted")
         self.assertVerdict(res, 2, "PASS")
+
+    def test_test_only_counts_as_tests(self):
+        # 2026-11-07 wave-2 review (finding 13): test.only( is a test
+        # definition; the count must stay factual even when the suite is defective
+        files = self.starter()
+        files["tests/notes.test.js"] += (b'test.only("regression A", () => {});\n'
+                                         b'test.only("regression B", () => {});\n'
+                                         b'test.only("regression C", () => {});\n')
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 6, "MANUAL", "15 test() calls counted")
+
+    def test_pristine_unreachable_c7_manual(self):
+        # 2026-11-07 wave-2 review (finding 7): an unreachable pristine manifest
+        # must leave c7 MANUAL - the run's own manifest must never authenticate
+        # an edit of package.json (self-auth PASS probed live by the reviewer)
+        files = self.starter()
+        saved = checks.PRISTINE_STARTER
+        checks.PRISTINE_STARTER = BENCH / "definitely-not-here"
+        try:
+            res = self.run_checks("09", files)
+        finally:
+            checks.PRISTINE_STARTER = saved
+        self.assertVerdict(res, 7, "MANUAL", "no trusted manifest")
+
+    def test_nested_data_json_fails_unlisted(self):
+        # 2026-11-07 wave-2 review (finding 9): only the ROOT data.json is
+        # runtime state; a nested same-named file is an unlisted file
+        files = self.starter()
+        files["sub/data.json"] = b"{}\n"
+        res = self.run_checks("09", files)
+        self.assertVerdict(res, 2, "FAIL", "unlisted file(s) present: sub/data.json")
 
     def test_missing_test_file_fails(self):
         files = self.starter()
@@ -1085,6 +1230,45 @@ class Spec10(FixtureTest):
         self.assertEqual(checks.SPEC10_GOLDEN_SKIPPED, dict(skipped))
         self.assertEqual(checks.SPEC10_GOLDEN_INVALID, {r for r, _ in invalid})
         self.assertEqual(checks.SPEC10_GOLDEN_RANGE, days)
+
+    # --- 2026-11-07 wave-2 review fixes (findings 4, 10, 14) ---
+
+    def test_multi_import_caught(self):
+        # import csv, requests used to pass with only csv seen
+        files = self.golden_files()
+        files["transform.py"] = TRANSFORM_PY.replace("import csv", "import csv, requests")
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
+
+    def test_import_mention_in_docstring_passes(self):
+        # a docstring mentioning an import is not an import
+        files = self.golden_files()
+        files["transform.py"] = (
+            '"""Report tool.\n\nimport requests would be a third-party\n'
+            'dependency - this tool is stdlib only.\n"""\nimport csv\nimport json\nimport sys\n')
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "PASS", "all imports stdlib")
+
+    def test_unrounded_total_fails(self):
+        # 0.005 tolerance admitted a total that is not rounded to 2 decimals
+        report = json.loads(json.dumps(GOLDEN_REPORT))
+        report["totals_by_currency"]["USD"] = 2300.485
+        res = self.run_checks("10", self.golden_files({"report.json": json.dumps(report)}))
+        self.assertVerdict(res, 3, "FAIL", "USD total 2300.485 != golden 2300.49")
+
+    def test_duplicate_skip_entries_fail(self):
+        # last-wins on a duplicate row number used to hide a garbage entry
+        report = json.loads(json.dumps(GOLDEN_REPORT))
+        report["skipped_duplicates"] = [{"row": 5, "id": "E999"}, {"row": 5, "id": "E001"},
+                                        {"row": 13, "id": "E010"}]
+        res = self.run_checks("10", self.golden_files({"report.json": json.dumps(report)}))
+        self.assertVerdict(res, 4, "FAIL", "duplicate row numbers")
+
+    def test_duplicate_invalid_entries_fail(self):
+        report = json.loads(json.dumps(GOLDEN_REPORT))
+        report["invalid_rows"] = GOLDEN_REPORT["invalid_rows"] + [{"row": 9, "reason": "dup"}]
+        res = self.run_checks("10", self.golden_files({"report.json": json.dumps(report)}))
+        self.assertVerdict(res, 5, "FAIL", "duplicate row numbers")
 
 
 # ---------------------------------------------------------------- CLI
