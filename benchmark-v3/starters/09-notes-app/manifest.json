@@ -1,0 +1,9 @@
+{
+  "NOTES-APP-README.md": "f3df074c7b33c66c9b9d2d0e7820609cb90583be12ebb2e0ebe6c10767984581",
+  "package.json": "393b930cc04a1c9e688edc71b572ce08bc4f2676f2534c17c17f7503328419ae",
+  "public/app.js": "ddf9634c7cce6fa713ab217daf0b1026e213a0db7b91c010964b244a9849fae3",
+  "public/index.html": "2b2a96f86efe354470c1ecb370e227bf396dc63e17c06bef331fd092eb14615e",
+  "public/styles.css": "9079051f781f8d344dfa947397ce345d4177e6f37d52a2e585acfbf125f82cdd",
+  "server.js": "6d82b7e732f49aaa373f0f47c9a14e70d0eb8ef0b1581c4fe47703f2aacf4b5d",
+  "tests/notes.test.js": "cf64eb29017bead8d2cdb2b40556268f7dedf6fc3472a1a445516e4b62bb268a"
+}

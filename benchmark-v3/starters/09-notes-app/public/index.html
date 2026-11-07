@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="wrap">
+    <h1>Notes</h1>
+
+    <form id="note-form">
+      <input id="title" name="title" placeholder="Title" autocomplete="off" required>
+      <textarea id="body" name="body" placeholder="Write a note..." rows="3" required></textarea>
+      <button type="submit">Add note</button>
+    </form>
+
+    <input id="search" type="search" placeholder="Search notes..." aria-label="Search notes" autocomplete="off">
+
+    <section id="list" aria-live="polite"></section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
