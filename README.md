@@ -84,8 +84,9 @@ A harder five-spec pack (vague brief, conflicting requirements, security traps, 
 ## Repo layout
 
 - `one-shot/`: the skill (SKILL.md, gate.md, modules/, templates/)
-- `benchmark/`: five specs, scoring guide, run scaffolder, calibration suite (`test_checks.py`)
+- `benchmark/`: ten specs (the original five plus the v3 pack 06-10, with the spec-10 fixture under `specs/fixtures/`), scoring guide, run scaffolder, calibration suite (`test_checks.py`)
 - `benchmark-hard/`: the adversarial five-spec pack, its pre-registrations and results
+- `benchmark-v3/`: the discriminating pack - 5 specs (06-10), vague criteria, prompts/protocol/prereg, the spec-09 starter with its sha manifest, scorer tools
 - `docs/`: PRD, MVP, SOW, stack notes, build prompt
 - `scripts/`: `validate_skill.py` (checks frontmatter, size and references) and its tests
 - `AUDIT-2026-11-01.md`, `AUDIT-2026-11-05.md`: the two full audits — findings, probes, triage
