@@ -4,6 +4,25 @@ Spec in, verified project out. A skill that makes an AI coding agent plan like a
 
 ## Install
 
+### Zero-friction CLI (Node 20+, zero dependencies)
+
+```sh
+# Auto-detect Claude Code, Cursor, Codex, OpenCode, ZCode, and Antigravity,
+# install one-shot/, and verify byte-identity:
+npx one-shot install
+
+# Verify an existing installation byte-for-byte:
+npx one-shot install --verify
+
+# Scaffold one-shot-work/contract.json in a project:
+npx one-shot init
+
+# Run the executable release-gate verifier in any project or CI step:
+npx one-shot verify --dir .
+```
+
+### Shell installer (POSIX `sh`, no Node required to install)
+
 ```sh
 # Claude Code (installs to ~/.claude/skills)
 git clone https://github.com/HailLucifer666/one-shot.git one-shot && cd one-shot && ./install.sh
@@ -27,18 +46,14 @@ Put your PRD, MVP, SOW, stack and references in your project folder, then run:
 /one-shot build this
 ```
 
-No spec yet? Describe the idea. The skill writes the PRD and picks a stack for you.
+No spec yet? Describe the idea. The skill creates `one-shot-work/contract.json` and binds every acceptance criterion to an executable check.
 
-## How it works
+## How it works (v0.2.0)
 
-1. Intake: checks the spec against a minimum checklist; asks at most one batched question.
-2. Spec: writes SPEC.md and STACK.md if missing, with versions verified, not remembered.
-3. Plan: vertical slices with acceptance tests, saved to files so context resets lose nothing.
-4. Build: one slice at a time, tests after each, all earlier tests must stay green.
-5. Self-review: engineer, QA, security and designer passes, in writing.
-6. Release gate: security, quality and delivery checklist, then an honest final report.
-
-Rigor adapts to the model: LEAN for strong models, STANDARD by default, STRICT for small or local ones.
+1. **Contract first (1 file, not 6):** Creates `one-shot-work/contract.json` (from `templates/contract.json`) binding every acceptance criterion to an executable check command, plus deliverables and server/test commands.
+2. **Adversarial domain packs:** Loads only what applies — `modules/app.md` (IDOR, auth bypass, malformed JSON, XSS, SSRF), `modules/web.md` (360/768/1280px overflow, WCAG AA contrast, zero dead clicks), `modules/brownfield.md` (diff-scope guard, watched-red regression test), and `modules/stack.md` (live registry lookup + major-version breaking-change trap check).
+3. **Reactive rigor:** Starts fast (watched-red acceptance tests -> minimal implementation) and escalates to <=150-line micro-slices + `one-shot-work/DIAGNOSIS.md` **only** after 2 consecutive failures on the same criterion.
+4. **Executable release gate (`verify.mjs`):** Runs tests, build, contract checks, live server probes (`401`/`403` auth guard, malformed JSON, no stack traces), `.env`/`.gitignore` + secret + visible-HTML placeholder scans, and optional Playwright checks, writing `one-shot-work/GATE-RECEIPT.json`. Exit `0` (`PASS`) is required to report done; exit `1` (`BLOCKED`) means NOT DONE.
 
 ## Results
 
@@ -73,22 +88,25 @@ A full 20-run re-measurement (5 specs x 2 arms x 2 repeats, same protocol: fresh
 
 A harder five-spec pack (vague brief, conflicting requirements, security traps, brownfield change, salon booking) ran as a second benchmark. Honest result, per the pack's own pre-registered rules: **only 2 of 5 specs discriminate pass-rate on this model** (H1 44.7% and H4 77.8% baselines; H2/H3/H5 are ceilings) — below the "3 of 5" bar the pack set for launching a validated benchmark, so the fallback applies: publish what was learned. On the two specs that do measure, **the skill won both**: H1 on median fix rounds (1 vs 2, zero regressions, ~1.6× tokens) and H4 security-traps on first-run pass rate (17/18 vs 14/18, +16.6 points, n=1) — with the skill arm's cheapest build (3.8M tokens) scoring its best result. Every cell is labeled n=1 per arm (the pre-registered n=2 was not reached within budget; run2 is explicitly queued, not silently dropped). Full tables, per-criterion evidence types, battery provenance and the defects-found list: [`benchmark-hard/RESULTS.md`](benchmark-hard/RESULTS.md).
 
+### v0.2.0 status
+`one-shot` v0.2.0 (slim 37-line kernel, single `contract.json`, reactive rigor, and executable `verify.mjs` -> `GATE-RECEIPT.json`) is **unmeasured on live LLM runs**; the cheap/local-model + hard-mode benchmark batch is next.
+
 ## Limitations
 
-- A skill is instructions, not intelligence. It improves process; it cannot guarantee a result or make a weak model strong.
-- The release gate reduces risk. It does not prove software is secure or bug-free.
-- Version 0.1 has modules for web and app work only. Slides, documents, games and media use the core pipeline with no extra module — the benchmark's slide-deck and game specs were scored against that same core pipeline on both arms.
-- The skill is model-agnostic (plain markdown; rigor levels scale to the model). The measured table covers one model on one harness; other models and harnesses are unmeasured until run.
-- Stack defaults reflect 2026 sources and go stale; the skill tells the model to verify versions.
+- A skill is instructions plus an executable gate, not intelligence. It improves process and catches verifiable defects; it cannot guarantee a result or make a weak model strong.
+- The release gate (`GATE-RECEIPT.json`) proves only the checks that actually ran. Skipped checks (such as browser checks when Playwright is absent) are unverified, not passed.
+- The measured tables above cover v0.1 / v0.1.4 on GLM 5.3 Flash; v0.2.0 and other models/harnesses are unmeasured until live runs complete.
 
 ## Repo layout
 
-- `one-shot/`: the skill (SKILL.md, gate.md, modules/, templates/)
+- `one-shot/`: the v0.2.0 skill (`SKILL.md`, `gate.md`, `intake.md`, `modules/{app,web,brownfield,stack}.md`, `templates/contract.json`, `scripts/verify.mjs` + `test_verify.mjs`)
+- `bin/`: zero-dep Node 20+ CLI (`one-shot.mjs` + `test_cli.mjs`) backing `npx one-shot install|verify|init`
+- `package.json`: zero-dependency npm package manifest (`engines.node >= 20`)
 - `benchmark/`: ten specs (the original five plus the v3 pack 06-10, with the spec-10 fixture under `specs/fixtures/`), scoring guide, run scaffolder, calibration suite (`test_checks.py`)
 - `benchmark-hard/`: the adversarial five-spec pack, its pre-registrations and results
 - `benchmark-v3/`: the discriminating pack - 5 specs (06-10), vague criteria, prompts/protocol/prereg, the spec-09 starter with its sha manifest, scorer tools
 - `docs/`: PRD, MVP, SOW, stack notes, build prompt
-- `scripts/`: `validate_skill.py` (checks frontmatter, size and references) and its tests
+- `scripts/`: `validate_skill.py`, `audit_history.py`, and their unit/e2e test suites
 - `AUDIT-2026-11-01.md`, `AUDIT-2026-11-05.md`: the two full audits — findings, probes, triage
 
 ## License

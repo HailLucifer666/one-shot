@@ -30,6 +30,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: node --test bin/test_cli.mjs
       - run: node --test one-shot/scripts/test_verify.mjs
       - run: node --test benchmark-v3/starters/09-notes-app/tests/notes.test.js
       - name: Verify spec-09 starter manifest integrity

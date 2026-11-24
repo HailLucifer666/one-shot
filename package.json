@@ -1,0 +1,37 @@
+{
+  "name": "one-shot",
+  "version": "0.2.0",
+  "description": "Autonomous spec-to-ship AI agent skill with an executable proof gate (zero dependencies).",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "one-shot": "./bin/one-shot.mjs"
+  },
+  "files": [
+    "bin/one-shot.mjs",
+    "one-shot/",
+    "install.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test bin/test_cli.mjs one-shot/scripts/test_verify.mjs benchmark-v3/starters/09-notes-app/tests/notes.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HailLucifer666/one-shot.git"
+  },
+  "keywords": [
+    "ai-agent",
+    "claude-code",
+    "cursor",
+    "codex",
+    "opencode",
+    "antigravity",
+    "skill",
+    "verification-gate"
+  ]
+}

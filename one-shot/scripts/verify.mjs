@@ -15,7 +15,7 @@ import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const VERSION = "0.2.0";
 
@@ -201,7 +201,53 @@ function killProcessTree(child) {
   }
 }
 
-async function probeServer(opts, checks) {
+async function runBrowserCheck(pw, targetUrl, checks) {
+  let browser;
+  try {
+    browser = await pw.chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    const consoleErrors = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+    page.on("pageerror", (err) => consoleErrors.push(err.message));
+
+    const overflows = [];
+    for (const width of [360, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(targetUrl, { waitUntil: "load", timeout: 15_000 });
+      const hasOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+      );
+      if (hasOverflow) overflows.push(`${width}px`);
+    }
+
+    checks.push({
+      id: "browser-console",
+      status: consoleErrors.length === 0 ? "PASS" : "FAIL",
+      detail: consoleErrors.length === 0
+        ? `0 console/page errors on ${targetUrl}`
+        : `${consoleErrors.length} error(s): ${consoleErrors.slice(0, 2).join("; ").slice(0, 200)}`,
+    });
+    checks.push({
+      id: "browser-overflow",
+      status: overflows.length === 0 ? "PASS" : "FAIL",
+      detail: overflows.length === 0
+        ? "no horizontal overflow at 360/768/1280px"
+        : `horizontal overflow detected at ${overflows.join(", ")}`,
+    });
+  } catch (err) {
+    checks.push({
+      id: "browser-check",
+      status: "FAIL",
+      detail: `browser check failed: ${err.message}`,
+    });
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
+async function probeServer(opts, checks, pw = null) {
   const port = await getFreePort();
   const healthPath = opts.healthPath || "/";
   const child = spawn(opts.startCmd, {
@@ -244,6 +290,10 @@ async function probeServer(opts, checks) {
         status: okAuth ? "PASS" : "FAIL",
         detail: `unauthenticated GET ${opts.protectedPath} -> HTTP ${unauth.status} (expected 401 or 403)`,
       });
+    }
+
+    if (pw && !opts.skipBrowser) {
+      await runBrowserCheck(pw, `http://127.0.0.1:${port}${healthPath}`, checks);
     }
   } catch (err) {
     checks.push({
@@ -390,9 +440,15 @@ export async function runVerify(rawOpts) {
     });
   }
 
-  // 4. Live server probe
+  // Load optional Playwright once if browser check is enabled
+  let pw = null;
+  if (!opts.skipBrowser) {
+    try { pw = await import("playwright"); } catch { pw = null; }
+  }
+
+  // 4. Live server probe (also runs Playwright against the live URL if available)
   if (opts.startCmd) {
-    await probeServer(opts, checks);
+    await probeServer(opts, checks, pw);
   }
 
   // 5. Static security & hygiene checks (.env, secrets, visible HTML placeholders)
@@ -449,22 +505,25 @@ export async function runVerify(rawOpts) {
       : `banned placeholder(s) in visible HTML: ${placeholderHits.slice(0, 3).join("; ")}`,
   });
 
-  // 6. Optional browser check
+  // 6. Optional browser check (for static HTML when no live server ran)
   if (!opts.skipBrowser) {
-    let pw = null;
-    try { pw = await import("playwright"); } catch { pw = null; }
     if (!pw) {
       checks.push({
         id: "browser-check",
         status: "SKIPPED",
         detail: "playwright not installed in this environment",
       });
-    } else {
-      checks.push({
-        id: "browser-check",
-        status: "SKIPPED",
-        detail: "playwright detected; pass --start-cmd or run dedicated UI spec for live viewport checks",
-      });
+    } else if (!opts.startCmd) {
+      const indexHtml = allFiles.find((f) => path.basename(f).toLowerCase() === "index.html");
+      if (indexHtml) {
+        await runBrowserCheck(pw, pathToFileURL(indexHtml).href, checks);
+      } else {
+        checks.push({
+          id: "browser-check",
+          status: "SKIPPED",
+          detail: "no startCmd or index.html to open in browser",
+        });
+      }
     }
   }
 
