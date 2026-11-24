@@ -8,9 +8,10 @@ Instead of letting an AI tick `[x]` in markdown and hand you broken code that ta
 
 ---
 
-## Real Before vs. After Proof (Same Model, Same 5-Line Prompt)
+## Real Before vs. After Proof (Realistic Vague Prompts)
 
-**Prompt:** *"Build me a landing page for my local pet shop called Paws & Whiskers..."* (normal human prompt — zero color, font, layout, contrast, or testing instructions). **Model:** DeepSeek V4.1 Flash.
+### 1. Landing Page — *Paws & Whiskers* (DeepSeek V4.1 Flash)
+**Prompt:** *"Build me a landing page for my local pet shop called Paws & Whiskers..."* (zero color, font, layout, contrast, or testing instructions).
 
 | **Without `one-shot` (Baseline)** | **With `one-shot` v0.3.0** |
 | :---: | :---: |
@@ -19,6 +20,17 @@ Instead of letting an AI tick `[x]` in markdown and hand you broken code that ta
 | **FAIL** WCAG AA contrast (`a.btn` **3.60:1**, `span.ticket__time` **1.00:1** invisible text) | **PASS** — **159/159** visible text nodes >= 4.5:1 |
 | **1** unlabeled form input (`9` inputs) | **0** unlabeled form inputs (`9/9` labeled) |
 | `88.7 KB` (`1,649 lines`), **0 tests**, **0 proof** | **`55.7 KB` (`1,422 lines` — 37% leaner)**, `tests/page.test.mjs` + `GATE-RECEIPT.json` (`15 pass, 0 fail`, `treeHash` verified) |
+
+### 2. Full-Stack Multi-User Web App — *Team Notes* (GLM 5.3 Flash)
+**Prompt:** *"Build me a small local web app (Node.js 20, zero npm packages) where team members can sign up, log in, save private notes, search, edit/delete, and share a read-only HTML view..."* (zero security or testing instructions).
+
+| **Without `one-shot` (Baseline)** | **With `one-shot` v0.3.0** |
+| :---: | :---: |
+| ![Baseline team notes app](docs/assets/notes-before-baseline.png) | ![one-shot v0.3.0 team notes app](docs/assets/notes-after-oneshot.png) |
+| **FAIL (`HTTP 500` DoS)** — malformed `Cookie: tn_session=%E0%A4%A` crashes every route (`URIError`) | **PASS (`HTTP 200`)** — malformed cookies caught cleanly |
+| **FAIL (Host Header Injection)** — `Host: evil.attacker.com` poisons rendered share links | **PASS** — relative `/share/<64-hex-token>` links, immune to Host injection |
+| **FAIL** — missing `Cache-Control: no-store` & `X-Content-Type-Options: nosniff` on private notes | **PASS** — sets both `no-store` and `nosniff` |
+| **0 automated tests** (no `test/` folder) | **28/28 tests across 5 suites** (`auth`, `notes`, `persistence`, `security`, `unit`) + `treeHash`-verified `GATE-RECEIPT.json` |
 
 ---
 
@@ -97,7 +109,8 @@ We publish ties alongside wins so you know exactly where `one-shot` helps and wh
 
 | Benchmark | Model(s) | Result | What It Showed |
 |---|---|---|---|
-| **Vague Everyday Prompt** (*Paws & Whiskers* landing page, v0.3.0) | DeepSeek V4.1 Flash | **Skill wins** (`0` defects vs `3` defects + offline lie) | Baseline shipped `1.00:1` invisible text, `3.60:1` buttons, unlabeled input, and 2 external URLs; `one-shot` passed 159/159 contrast checks at 37% smaller size with verified `treeHash`. |
+| **Vague Full-Stack Web App** (*Team Notes*, v0.3.0) | GLM 5.3 Flash | **Skill wins** (`0` defects, `28/28` tests vs `3` security bugs, `0` tests) | Baseline shipped an uncaught `HTTP 500` cookie DoS, Host-header share-link injection, missing `no-store`/`nosniff` headers, and 0 tests; `one-shot` passed all live probes with 28/28 tests + verified `treeHash`. |
+| **Vague Everyday Landing Page** (*Paws & Whiskers*, v0.3.0) | DeepSeek V4.1 Flash | **Skill wins** (`0` defects vs `3` defects + offline lie) | Baseline shipped `1.00:1` invisible text, `3.60:1` buttons, unlabeled input, and 2 external URLs; `one-shot` passed 159/159 contrast checks at 37% smaller size with verified `treeHash`. |
 | **Hard-Mode Security Traps (`H4`)** ([`benchmark-hard/RESULTS.md`](benchmark-hard/RESULTS.md)) | GLM 5.3 Flash | **Skill wins (+16.6 pts)** (`17/18` vs `14/18`) | Baselines passed happy-path tests while shipping IDOR/auth/SSRF gaps; `one-shot` caught them. |
 | **Explicit 10-Bullet Specs** (5 builds × 3 models, v0.3.0) | DeepSeek V4.1, Hy4, GLM 5.3 | **5/5 vs 5/5 functional tie** | When the user prompt already spells out every edge case, strong models pass both arms; `one-shot` still enforced 5/5 untampered `treeHash` receipts, 44% leaner HTML on Build 01, and strict token allowlist + body cap on Build 02. |
 | **Original v0.1 / v0.1.4 Ceiling Battery** (`benchmark/runs/`) | GLM 5.3 Flash (ZCode) | **10/10 vs 10/10 tie** | Proved that v0.1's 6-file markdown ceremony added 1.5–5.1× token overhead on easy specs — which directly motivated v0.2/v0.3's slim 37-line kernel + executable gate. |
