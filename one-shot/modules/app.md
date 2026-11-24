@@ -1,35 +1,22 @@
-# App module: apps, APIs and backends
+# App & API Security Pack (Adversarial Traps)
 
-Load for anything with data, users or a server. Order of work: data model, API, auth, UI, hardening.
+Load for any backend, API, auth, or data-handling project. Focus on the exact defects that survive unit tests and cause rework.
 
-## Process
-1. Data model first: entities, fields, relations, constraints. Write it into SPEC.md before code.
-2. Migrations from day one. Never edit the database by hand.
-3. API next: list endpoints with method, path, input schema, output schema, auth rule.
-4. Auth and permissions before features that need them.
-5. UI last, against the finished API, one vertical slice at a time.
+## Mandatory Adversarial Probes (write as executable tests)
 
-## Rules
-- Validate every input at the boundary with a schema (for example Zod or Pydantic). Reject, never silently fix.
-- Authorization is checked on the server for every action, using the session, never a client-supplied user id.
-- Hash passwords with a maintained library (argon2 or bcrypt); prefer an established auth library over hand-rolled auth. Never write your own cryptography.
-- Secrets only from environment variables. Provide `.env.example`. Never log secrets or personal data.
-- Use parameterized queries or the ORM. No string-built SQL.
-- Return consistent error shapes and correct status codes. Do not leak internals.
-- Paginate every list endpoint. Add indexes for fields used in filters and joins.
-- Make writes idempotent where retries are likely (payments, webhooks). Verify webhook signatures.
-- Add rate limiting to auth and expensive endpoints.
-
-## Testing minimum
-- Unit tests for business logic.
-- One integration test per endpoint covering success, validation failure and unauthorized access.
-- One end-to-end test per core user flow.
-- Tests run with a single command documented in the README.
-
-## Observability and delivery
-- Structured logs with request ids; a health endpoint.
-- Environment-specific config; no hardcoded URLs or keys.
-- Dockerfile or host config, plus a deploy section in the README.
-
-## Done when
-The data model matches SPEC.md, every endpoint has a test for allowed and forbidden access, and the Security and Delivery sections of `gate.md` are ticked.
+1. **IDOR / Ownership Bypass:**
+   - Create resource as User A, then `GET` / `PATCH` / `DELETE` it as User B. Must return `403` or `404`, never `200`.
+   - Derive actor identity strictly from the verified session/token — never trust a client-supplied `userId` or `ownerId` in body/query.
+2. **Auth Bypass:**
+   - Hit every protected endpoint with (a) no auth header, (b) malformed token, (c) expired/wrong-secret token. Must return `401`/`403`.
+   - Set `protectedPath` in `one-shot-work/contract.json` so `scripts/verify.mjs` probes it live.
+3. **Malformed Input & Error Leakage:**
+   - `POST` invalid JSON (`{not-json`), wrong types, negative/zero amounts, and oversized payloads. Must return `400`/`422` with a consistent JSON error body — never `500`, never a stack trace, file path, or SQL error.
+4. **Stored / Reflected XSS:**
+   - Submit `<img src=x onerror=alert(1)>` and `"><script>alert(1)</script>` in text fields. Stored values must be escaped on HTML render (or served with `Content-Type: application/json` + `X-Content-Type-Options: nosniff`).
+5. **SSRF (whenever accepting a URL):**
+   - Reject non-`http(s)` schemes and block loopback/link-local/private targets (`127.0.0.1`, `::1`, `169.254.169.254`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) after DNS resolution, not just on the raw URL string.
+6. **Injection & Secrets:**
+   - Parameterized queries only (zero string-interpolated SQL).
+   - Secrets from env vars only; ship `.env.example`; ensure `.gitignore` ignores `.env` itself (not just `.env.local`).
+   - Password hashing via `argon2`, `bcrypt`, or `crypto.scrypt` with per-user salt — never `md5`/`sha256` or hand-rolled crypto.

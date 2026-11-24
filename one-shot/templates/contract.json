@@ -1,0 +1,19 @@
+{
+  "goal": "",
+  "outputType": "web | api | fullstack | brownfield | cli | doc",
+  "deliverables": [],
+  "buildCmd": null,
+  "testCmd": null,
+  "startCmd": null,
+  "healthPath": "/",
+  "protectedPath": null,
+  "assumptions": [],
+  "criteria": [
+    {
+      "id": "c1",
+      "criterion": "Replace with concrete, checkable acceptance criterion",
+      "check": "command that exits 0 iff criterion holds",
+      "mustHave": true
+    }
+  ]
+}

@@ -1,41 +1,21 @@
-# Release gate
+# Release Gate (Executable Proof)
 
-Tick every item before reporting done. Write N/A with a reason when an item does not apply. Fix failures or list them under Known limitations in the final report. Correctness and Security items are must-have; AI features are must-have when they apply; Quality and Delivery items are nice-to-have unless SPEC.md marks them as acceptance criteria. A must-have item unmet means the gate is BLOCKED (see SKILL.md section 6), not done-with-limitations. This gate reduces risk; it does not prove the project is secure or bug-free, and the final report must say so.
+Honor-system checkboxes do not ship. A run is done **only** when `scripts/verify.mjs` exits `0` and writes a green `one-shot-work/GATE-RECEIPT.json`.
 
-## Correctness
-- [ ] Every acceptance criterion in SPEC.md is met or listed as a known limitation
-- [ ] All tests pass, including those from earlier slices
-- [ ] Lint and type checks pass with zero errors
-- [ ] Builds from a clean checkout (fresh install, build, run)
-- [ ] No unrequested features were added
+## 1. Run the Verifier
+```sh
+node <skill-dir>/scripts/verify.mjs --dir .
+```
+It reads `one-shot-work/contract.json` (and accepts CLI overrides `--test-cmd`, `--build-cmd`, `--start-cmd`, `--health-path`, `--protected-path`) and verifies:
+- Every declared deliverable exists on disk
+- Every criterion `check` command, `buildCmd`, and `testCmd` exits `0`
+- Live server (when `startCmd` is set): boots on a random port, `healthPath` returns 2xx/3xx with no stack trace, malformed JSON POST does not return 500 or leak a stack trace, and `protectedPath` rejects unauthenticated callers with `401`/`403`
+- No unignored `.env`, no hardcoded secret literals in code/config, no banned placeholders in visible HTML
+- Optional browser check when Playwright is installed (otherwise recorded honestly as `SKIPPED`)
 
-## Security
-- [ ] Review against the OWASP Top 10 categories that apply
-- [ ] All external input validated on the server side; output encoded
-- [ ] Authentication and authorization checked on every protected route and action
-- [ ] No secrets in code, committed config or git history; `.env.example` provided
-- [ ] Dependency audit run (`npm audit`, `pip-audit` or equivalent); high and critical issues fixed or listed
-- [ ] Rate limiting on login, signup and expensive endpoints
-- [ ] Error messages do not leak stack traces, paths or internals
-- [ ] Security headers and HTTPS set where hosting allows
-- [ ] File uploads (if any) restricted by type and size, stored outside the web root
+## 2. Verdict Handling
+- **PASS (`exit 0`):** Every executed check passed. Cite `one-shot-work/GATE-RECEIPT.json` and the exact pass/fail/skipped counts in the final report.
+- **BLOCKED (`exit 1`):** Return to the build loop, fix the failing check(s) (max 3 attempts per item), and re-run `scripts/verify.mjs`. If still `BLOCKED`, lead the final report with `NOT DONE (BLOCKED)` and the exact failing check IDs.
 
-## AI features (if none, mark this section N/A in one line)
-- [ ] Untrusted text (user input, web pages, files) is treated as data, never as instructions
-- [ ] Model output is validated before use and never executed or rendered unescaped
-- [ ] Tools and permissions given to the model are the minimum needed
-- [ ] Prompt injection tested with at least three hostile inputs
-- [ ] Per-user limits on model calls and cost
-
-## Quality
-- [ ] Empty, loading and error states exist for every data view
-- [ ] Accessible: labels on inputs, visible focus, keyboard reachable, contrast at least 4.5:1 for body text
-- [ ] Responsive at 360, 768 and 1280 px widths with no sideways scrolling
-- [ ] Performance basics: images sized and compressed, no blocking scripts, no N+1 queries
-- [ ] No console errors in the browser or server logs on the main flows
-
-## Delivery
-- [ ] README with prerequisites, setup, run, test and deploy steps that actually work
-- [ ] Environment variable template with every required variable described
-- [ ] Deploy configuration or instructions for the chosen host
-- [ ] Known limitations listed honestly
+## 3. Scope Honesty
+State in the final report that `GATE-RECEIPT.json` proves only the checks that executed — skipped checks (such as browser checks when Playwright is absent) are unverified, not passed.

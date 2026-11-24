@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Regression tests for scripts/validate_skill.py. Standard library only.
+"""Regression tests for scripts/validate_skill.py (v0.2.0). Standard library only.
 
   python -I scripts/test_validate_skill.py
 
 Each test copies the real skill folder and validator into a scratch tree,
-mutates one thing, and pins the validator's exit code. Written after the
-2026-11-05 audit found two false greens: a deleted intake.md (referenced
-bare) and a deleted templates/ file both left the validator saying OK.
+mutates one thing, and pins the validator's exit code.
 """
 import shutil
 import subprocess
@@ -40,7 +38,6 @@ class ValidateSkill(unittest.TestCase):
         self.assertIn("OK", out)
 
     def test_deleted_bare_reference_fails(self):
-        # 2026-11-05 false green: intake.md is referenced bare, was never checked
         (self.skill / "intake.md").unlink()
         code, out = self.run_validator()
         self.assertEqual(code, 1)
@@ -51,28 +48,53 @@ class ValidateSkill(unittest.TestCase):
         code, out = self.run_validator()
         self.assertEqual(code, 1)
 
-    def test_emptied_templates_folder_fails(self):
-        for p in (self.skill / "templates").glob("*.md"):
-            p.unlink()
+    def test_deleted_contract_template_fails(self):
+        (self.skill / "templates" / "contract.json").unlink()
         code, out = self.run_validator()
         self.assertEqual(code, 1)
-        self.assertIn("templates/", out)
+        self.assertIn("contract.json", out)
+
+    def test_deleted_brownfield_module_fails(self):
+        (self.skill / "modules" / "brownfield.md").unlink()
+        code, out = self.run_validator()
+        self.assertEqual(code, 1)
+        self.assertIn("brownfield.md", out)
 
     def test_missing_version_fails(self):
-        # v0.1.5 (HANDOFF 4.3): the version field is required frontmatter
         sk = self.skill / "SKILL.md"
-        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.1.5\n", ""),
+        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.2.0\n", ""),
                       encoding="utf-8")
         code, out = self.run_validator()
         self.assertEqual(code, 1)
         self.assertIn("version", out)
 
-    def test_oversized_skill_fails(self):
+    def test_wrong_version_fails(self):
         sk = self.skill / "SKILL.md"
-        sk.write_text(sk.read_text(encoding="utf-8") + "\n" * 100, encoding="utf-8")
+        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.2.0\n", "version: 0.1.5\n"),
+                      encoding="utf-8")
         code, out = self.run_validator()
         self.assertEqual(code, 1)
-        self.assertIn("150", out)
+        self.assertIn("0.2.0", out)
+
+    def test_oversized_skill_fails(self):
+        # v0.2.0 tightens the kernel limit from 150 lines to 80 lines.
+        sk = self.skill / "SKILL.md"
+        sk.write_text(sk.read_text(encoding="utf-8") + "\n" * 50, encoding="utf-8")
+        code, out = self.run_validator()
+        self.assertEqual(code, 1)
+        self.assertIn("80", out)
+
+    def test_missing_verify_script_fails(self):
+        (self.skill / "scripts" / "verify.mjs").unlink()
+        code, out = self.run_validator()
+        self.assertEqual(code, 1)
+        self.assertIn("verify.mjs", out)
+
+    def test_broken_verify_help_fails(self):
+        (self.skill / "scripts" / "verify.mjs").write_text("process.exit(1);\n", encoding="utf-8")
+        code, out = self.run_validator()
+        self.assertEqual(code, 1)
+        self.assertIn("--help", out)
 
 
 if __name__ == "__main__":
