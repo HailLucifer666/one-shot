@@ -1,116 +1,125 @@
 # one-shot
 
-Spec in, verified project out. A skill that makes an AI coding agent plan like a senior team, build in small tested slices, review its own work, and pass a release gate before it says done. Built to help cheap and local models, and to cut the second and third prompt rounds on strong ones.
+**Stop AI coding agents from lying about "Done!"**
 
-## Install
+A **37-line agent skill** + **zero-dependency executable verifier (`verify.mjs`)** + **tamper-proof SHA-256 `treeHash` receipt** + **native Stop-Hook** for Claude Code, Cursor, Codex, OpenCode, ZCode, and Antigravity.
 
-### Zero-friction CLI (Node 20+, zero dependencies)
+Instead of letting an AI tick `[x]` in markdown and hand you broken code that takes 2–3 follow-up rounds to fix, `one-shot` binds every acceptance criterion to an executable command and **physically blocks the agent from finishing until the live app survives tests, security/IDOR/fuzz probes, and DOM checks.**
+
+---
+
+## Real Before vs. After Proof (Same Model, Same 5-Line Prompt)
+
+**Prompt:** *"Build me a landing page for my local pet shop called Paws & Whiskers..."* (normal human prompt — zero color, font, layout, contrast, or testing instructions). **Model:** DeepSeek V4.1 Flash.
+
+| **Without `one-shot` (Baseline)** | **With `one-shot` v0.3.0** |
+| :---: | :---: |
+| ![Baseline pet shop landing page](docs/assets/paws-before-baseline.png) | ![one-shot v0.3.0 pet shop landing page](docs/assets/paws-after-oneshot.png) |
+| Claimed *"no internet needed"* while shipping **2 external `https://` URLs** | **0** external URLs — genuinely offline |
+| **FAIL** WCAG AA contrast (`a.btn` **3.60:1**, `span.ticket__time` **1.00:1** invisible text) | **PASS** — **159/159** visible text nodes >= 4.5:1 |
+| **1** unlabeled form input (`9` inputs) | **0** unlabeled form inputs (`9/9` labeled) |
+| `88.7 KB` (`1,649 lines`), **0 tests**, **0 proof** | **`55.7 KB` (`1,422 lines` — 37% leaner)**, `tests/page.test.mjs` + `GATE-RECEIPT.json` (`15 pass, 0 fail`, `treeHash` verified) |
+
+---
+
+## Install (30 Seconds, Zero Dependencies)
+
+### Option 1 — Node 20+ CLI (Recommended)
 
 ```sh
+git clone https://github.com/HailLucifer666/one-shot.git && cd one-shot
+
 # Auto-detect Claude Code, Cursor, Codex, OpenCode, ZCode, and Antigravity,
-# install one-shot/, verify byte-identity, and register the Claude Code Stop-Hook:
-npx one-shot install --with-hook
-
-# Verify an existing installation byte-for-byte:
-npx one-shot install --verify
-
-# Scaffold one-shot-work/contract.json (add --brownfield for baseline.json, --git-hook for pre-commit):
-npx one-shot init --brownfield --git-hook
-
-# Run the executable release-gate verifier in any project or CI step:
-npx one-shot verify --dir .
-
-# Fast tamper/freshness check of GATE-RECEIPT.json against current working-tree treeHash:
-npx one-shot verify --dir . --check-receipt
+# install one-shot/ v0.3.0, byte-verify every file, and register the Claude Code Stop-Hook:
+node bin/one-shot.mjs install --with-hook
 ```
 
-### Shell installer (POSIX `sh`, no Node required to install)
+### Option 2 — POSIX Shell Installer (No Node required to install)
 
 ```sh
-# Claude Code (installs to ~/.claude/skills)
-git clone https://github.com/HailLucifer666/one-shot.git one-shot && cd one-shot && ./install.sh
-
-# OpenCode (global skills dir)
-git clone https://github.com/HailLucifer666/one-shot.git one-shot && cd one-shot && ./install.sh ~/.config/opencode/skill
-
-# ZCode
-git clone https://github.com/HailLucifer666/one-shot.git one-shot && cd one-shot && ./install.sh ~/.zcode/skills
-
-# Harnesses without a skills loader (Codex CLI, Gemini CLI, ...): copy the
-# one-shot/ folder anywhere and point the agent at it - add to AGENTS.md:
-#   When building a project, read and follow one-shot/SKILL.md.
+git clone https://github.com/HailLucifer666/one-shot.git && cd one-shot
+./install.sh                            # Claude Code (~/.claude/skills)
+./install.sh ~/.config/opencode/skill   # OpenCode
+./install.sh ~/.zcode/skills            # ZCode
 ```
 
-## Use
+---
 
-Put your PRD, MVP, SOW, stack and references in your project folder, then run:
+## Usage
 
+In Claude Code, Cursor, Codex, OpenCode, ZCode, or Antigravity:
+
+```text
+/one-shot Build a team snippet sharing API with auth and HTML preview.
 ```
-/one-shot build this
+
+### CLI Commands (Also Usable in CI / GitHub Actions)
+
+```sh
+# Verify all installed skill copies byte-for-byte
+node bin/one-shot.mjs install --verify
+
+# Scaffold one-shot-work/contract.json (+ baseline.json for brownfield + git pre-commit hook)
+node bin/one-shot.mjs init --brownfield --git-hook
+
+# Run the executable release-gate verifier (writes tamper-proof one-shot-work/GATE-RECEIPT.json)
+node bin/one-shot.mjs verify --dir .
+
+# Fast (<25ms) tamper/freshness check of GATE-RECEIPT.json against the live working-tree treeHash
+node bin/one-shot.mjs verify --dir . --check-receipt
+
+# Stop-Hook / pre-commit enforcer (exits 0 if no contract or fresh PASS; exits 2 if missing/stale/BLOCKED)
+node bin/one-shot.mjs hook-check --dir .
 ```
 
-No spec yet? Describe the idea. The skill creates `one-shot-work/contract.json` and binds every acceptance criterion to an executable check.
+---
 
-## How it works (v0.3.0)
+## How `one-shot` v0.3.0 Works
 
-1. **Contract first (1 file, not 6):** Creates `one-shot-work/contract.json` (from `templates/contract.json`) binding every acceptance criterion to an executable check command, plus deliverables, server/test commands, and optional brownfield `allowedFiles` / `minTestCount` guards (`baseline.json`).
-2. **Adversarial domain packs:** Loads only what applies — `modules/app.md` (IDOR, auth bypass, malformed JSON, XSS, SSRF), `modules/web.md` (360/768/1280px overflow, WCAG AA contrast, zero dead clicks), `modules/brownfield.md` (diff-scope guard, watched-red regression test), and `modules/stack.md` (live registry lookup + major-version breaking-change trap check).
-3. **Reactive rigor:** Starts fast (watched-red acceptance tests -> minimal implementation) and escalates to <=150-line micro-slices + `one-shot-work/DIAGNOSIS.md` **only** after 2 consecutive failures on the same criterion.
-4. **Tamper-proof executable gate + Stop-Hook (`verify.mjs` & `hook-check`):** Runs tests, build, contract criteria, diff-scope & non-commented test-count floor, live server probes (`401`/`403` auth guard, malformed JSON, XSS/SQLi/proto-pollution fuzzing, multi-user IDOR probe), `.env`/`.gitignore` + secret + visible-HTML placeholder scans, and Playwright DOM checks (console errors, 360/768/1280px overflow, computed WCAG AA contrast, dead controls, broken/alt-less images). Writes `one-shot-work/GATE-RECEIPT.json` with a composite SHA-256 `treeHash`; `npx one-shot hook-check` blocks agent completion or `git commit` if any file changed after the gate passed.
+1. **One Contract, Not Six Markdown Files (`one-shot-work/contract.json`):** Binds every acceptance criterion to an executable check command, plus deliverables, server commands, and optional brownfield `allowedFiles` / `minTestCount` guards.
+2. **Adversarial Domain Packs (Loaded Only When Needed):**
+   - `modules/app.md` — IDOR ownership probes, auth bypass, malformed JSON, XSS, SSRF, secrets.
+   - `modules/web.md` — 360/768/1280px overflow, computed WCAG AA contrast, zero dead controls, console errors.
+   - `modules/brownfield.md` — diff-scope whitelist guard, watched-red regression test rule, preserve existing suite.
+   - `modules/stack.md` — live registry version lookup + major-version breaking-change check (no stale hardcoded versions).
+3. **Reactive Rigor:** Starts fast (watched-red acceptance tests → minimal code) and escalates to `<=150`-line micro-slices + `DIAGNOSIS.md` **only** after 2 consecutive failures on the same criterion.
+4. **Tamper-Proof Gate + Stop-Hook (`verify.mjs` → `GATE-RECEIPT.json`):**
+   - Runs project tests, build, contract criteria, diff-scope & non-commented test-count floor.
+   - Boots live servers on a random port and probes health, malformed JSON (no 500/stack trace), `401`/`403` auth guard, XSS/SQLi/prototype-pollution fuzzing, and multi-user IDOR.
+   - Scans `.env`/`.gitignore`, secret literals (string-aware), visible HTML placeholders, and runs Playwright DOM checks (console errors, 360/768/1280px overflow, WCAG AA contrast, dead controls, broken/alt-less images).
+   - Signs `GATE-RECEIPT.json` with a composite SHA-256 `treeHash` of the project tree. Any post-gate edit invalidates `treeHash` and causes `hook-check` to block completion until re-verified.
 
-## Results
+---
 
-Measured Oct 31 - Nov 1, 2026. Harness: ZCode. Model: GLM 5.3 Flash. Design: ambient-labeled two-arm benchmark — both arms keep the full ambient skill catalog; `/one-shot` is added only to the skill arm. 5 specs x 2 repeats per arm, fresh session per run, verbatim prompts, one prompt only. Every number below traces to a sentinel-gated `RESULT.json` vendored under `benchmark/runs` (full run outputs retained in the project's `_runs-zcode` workspace archive; scoring method recorded in each record). Runs scoring below 10/10 get follow-up prompts actually sent and counted. The skill arm ran version 0.1 (sha256 prefix `d17a33667c28c421`); the 0.1.1, 0.1.2 and 0.1.3 fixes each came from external tests after this measurement and are unmeasured on this benchmark.
+## Honest Benchmarks (No Cherry-Picking)
 
-| Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
-| --- | --- | --- | --- | --- | --- | --- |
-| glm-5.3-flash (ZCode) | baseline | 10 | 10/10 (100%) | 10.0 | 0 | 1,989,716 |
-| glm-5.3-flash (ZCode) | skill | 10 | 10/10 (100%) | 10.0 | 0 | 2,718,866 |
+We publish ties alongside wins so you know exactly where `one-shot` helps and where it doesn't:
 
-**The honest headline: on this benchmark, a full tie.** GLM 5.3 Flash with this ambient catalog maxes all 50 criteria in both arms — the benchmark did not separate the arms on pass rate. What the measurement DID show, with evidence:
+| Benchmark | Model(s) | Result | What It Showed |
+|---|---|---|---|
+| **Vague Everyday Prompt** (*Paws & Whiskers* landing page, v0.3.0) | DeepSeek V4.1 Flash | **Skill wins** (`0` defects vs `3` defects + offline lie) | Baseline shipped `1.00:1` invisible text, `3.60:1` buttons, unlabeled input, and 2 external URLs; `one-shot` passed 159/159 contrast checks at 37% smaller size with verified `treeHash`. |
+| **Hard-Mode Security Traps (`H4`)** ([`benchmark-hard/RESULTS.md`](benchmark-hard/RESULTS.md)) | GLM 5.3 Flash | **Skill wins (+16.6 pts)** (`17/18` vs `14/18`) | Baselines passed happy-path tests while shipping IDOR/auth/SSRF gaps; `one-shot` caught them. |
+| **Explicit 10-Bullet Specs** (5 builds × 3 models, v0.3.0) | DeepSeek V4.1, Hy4, GLM 5.3 | **5/5 vs 5/5 functional tie** | When the user prompt already spells out every edge case, strong models pass both arms; `one-shot` still enforced 5/5 untampered `treeHash` receipts, 44% leaner HTML on Build 01, and strict token allowlist + body cap on Build 02. |
+| **Original v0.1 / v0.1.4 Ceiling Battery** (`benchmark/runs/`) | GLM 5.3 Flash (ZCode) | **10/10 vs 10/10 tie** | Proved that v0.1's 6-file markdown ceremony added 1.5–5.1× token overhead on easy specs — which directly motivated v0.2/v0.3's slim 37-line kernel + executable gate. |
 
-- **Token economics differ by spec.** Mean tokens per run: baseline 1.99M vs skill 2.72M. Per spec: slide decks **2.7x cheaper with the skill** (0.69M vs 1.84M — its verify loop skipped rework), auth apps **2.6x dearer** (4.45M vs 1.69M — it built TypeScript, helmet, rate limiting and 48-56-test suites where baselines built 26-36-test JavaScript), dashboards 2.1x dearer.
-- **Depth beyond the criteria.** Skill-arm apps consistently shipped more than the spec asked nowhere and more *verification* than baselines: self-authored checkers in every `one-shot-work/`, gate-style known-limitations sections in every report, four self-caught defects fixed mid-build in one game.
-- **A scorer lesson, published as required.** Three checker false-FAILs were caught by measuring twice (.mjs test files, deck chrome in word counts, JS-rendered speaker notes); one apparent skill win dissolved under independent measurement into the tie recorded here. The scoring method and every correction are in the run records.
-- Earlier OpenCode pilot runs (2 models x 5 specs) are retained as exploratory data only — in the project workspace archive, not in this repo; they are not part of this table.
+---
 
-### Re-measurement: v0.1.4 (2026-11-05, audit battery)
+## Repo Layout
 
-A full 20-run re-measurement (5 specs x 2 arms x 2 repeats, same protocol: fresh session per run, verbatim prompts, one prompt only, MANUAL criteria judged from recorded verification evidence) ran as part of the 2026-11-05 audit, after the scorer gained a 66-test calibration suite and false-FAIL fixes. Records in `benchmark/runs-v014/`, builds archived in the project workspace; full protocol deviations disclosed in [`AUDIT-2026-11-05.md`](AUDIT-2026-11-05.md).
+- `one-shot/`: the v0.3.0 skill (`SKILL.md` — 37 lines, `gate.md`, `intake.md`, `modules/{app,web,brownfield,stack}.md`, `templates/contract.json`, `scripts/verify.mjs` + `test_verify.mjs`)
+- `bin/`: zero-dep Node 20+ CLI (`one-shot.mjs` + `test_cli.mjs`)
+- `package.json`: zero-dependency package manifest (`engines.node >= 20`)
+- `scripts/`: `validate_skill.py`, `audit_history.py`, and their unit/e2e test suites
+- `benchmark/`, `benchmark-hard/`, `benchmark-v3/`: specs, frozen starters, scoring scripts, and vendored historical records
+- `docs/assets/`: before/after benchmark screenshots
 
-| Model | Mode | Runs | First-run pass rate | Mean criteria (of 10) | Median follow-ups | Mean tokens |
-| --- | --- | --- | --- | --- | --- | --- |
-| glm-5.3-flash (ZCode) | baseline | 10 | 10/10 | 10.0 | 0 | 3,310,820 |
-| glm-5.3-flash (ZCode) | skill | 10 | 10/10 | 10.0 | 0 | 5,072,516 |
-
-**The honest headline: the tie replicates.** A strong model maxes these specs in both arms; the ceiling noted below still holds. Token premium overall 1.53x, concentrated in the auth spec (5.09x) and absent on the game spec (0.94x); the October deck-economics finding reversed at n=2 — read neither as a trend. The skill arm produced `one-shot-work/` state and a recorded release gate in 10/10 runs and self-caught real defects mid-build in 6/10; baselines self-corrected in 4/10. The skill arm ran v0.1.4 (sha256 prefix `e183a8cd00db0302`); v0.1.5 (version field, autonomous retry fallback, template-path references) is **unmeasured**. Ambient catalog differed from October (dev-studio playbooks present in both arms), so cross-battery comparison is confounded; within-battery comparison is like-for-like.
-
-**Limitations of this measurement:** n=10 per arm, one model, one harness, one weekend. The benchmark's criteria were not hard enough to separate arms on a model that maxes them — distinguishing pass-rate differences needs harder specs or weaker models. Manual criteria were judged from each run's recorded browser-verification evidence with independent spot-checks of the riskiest claims (deck word caps, speaker notes, game persistence); the full method is disclosed in every RESULT.json. Never claim secure or bug-free: all 20 outputs are benchmark artifacts, not audited software.
-
-## Hard-mode follow-up (GLM 5.3 Flash, 2026-11-01)
-
-A harder five-spec pack (vague brief, conflicting requirements, security traps, brownfield change, salon booking) ran as a second benchmark. Honest result, per the pack's own pre-registered rules: **only 2 of 5 specs discriminate pass-rate on this model** (H1 44.7% and H4 77.8% baselines; H2/H3/H5 are ceilings) — below the "3 of 5" bar the pack set for launching a validated benchmark, so the fallback applies: publish what was learned. On the two specs that do measure, **the skill won both**: H1 on median fix rounds (1 vs 2, zero regressions, ~1.6× tokens) and H4 security-traps on first-run pass rate (17/18 vs 14/18, +16.6 points, n=1) — with the skill arm's cheapest build (3.8M tokens) scoring its best result. Every cell is labeled n=1 per arm (the pre-registered n=2 was not reached within budget; run2 is explicitly queued, not silently dropped). Full tables, per-criterion evidence types, battery provenance and the defects-found list: [`benchmark-hard/RESULTS.md`](benchmark-hard/RESULTS.md).
-
-### v0.2.0 status
-`one-shot` v0.2.0 (slim 37-line kernel, single `contract.json`, reactive rigor, and executable `verify.mjs` -> `GATE-RECEIPT.json`) is **unmeasured on live LLM runs**; the cheap/local-model + hard-mode benchmark batch is next.
+---
 
 ## Limitations
 
-- A skill is instructions plus an executable gate, not intelligence. It improves process and catches verifiable defects; it cannot guarantee a result or make a weak model strong.
-- The release gate (`GATE-RECEIPT.json`) proves only the checks that actually ran. Skipped checks (such as browser checks when Playwright is absent) are unverified, not passed.
-- The measured tables above cover v0.1 / v0.1.4 on GLM 5.3 Flash; v0.2.0 and other models/harnesses are unmeasured until live runs complete.
-
-## Repo layout
-
-- `one-shot/`: the v0.2.0 skill (`SKILL.md`, `gate.md`, `intake.md`, `modules/{app,web,brownfield,stack}.md`, `templates/contract.json`, `scripts/verify.mjs` + `test_verify.mjs`)
-- `bin/`: zero-dep Node 20+ CLI (`one-shot.mjs` + `test_cli.mjs`) backing `npx one-shot install|verify|init`
-- `package.json`: zero-dependency npm package manifest (`engines.node >= 20`)
-- `benchmark/`: ten specs (the original five plus the v3 pack 06-10, with the spec-10 fixture under `specs/fixtures/`), scoring guide, run scaffolder, calibration suite (`test_checks.py`)
-- `benchmark-hard/`: the adversarial five-spec pack, its pre-registrations and results
-- `benchmark-v3/`: the discriminating pack - 5 specs (06-10), vague criteria, prompts/protocol/prereg, the spec-09 starter with its sha manifest, scorer tools
-- `docs/`: PRD, MVP, SOW, stack notes, build prompt
-- `scripts/`: `validate_skill.py`, `audit_history.py`, and their unit/e2e test suites
-- `AUDIT-2026-11-01.md`, `AUDIT-2026-11-05.md`: the two full audits — findings, probes, triage
+- A skill + verifier reduces risk; it does not prove software is bug-free or formally secure.
+- `GATE-RECEIPT.json` proves only the checks that executed (skipped checks such as Playwright when not installed are recorded honestly as `SKIPPED`).
+- On tiny, hyper-specified tasks with frontier models, a baseline will often tie on pass rate; the real payoff is on realistic vague prompts, multi-file/brownfield edits, security traps, and cheaper/local models.
 
 ## License
 
