@@ -2,11 +2,17 @@
   "goal": "",
   "outputType": "web | api | fullstack | brownfield | cli | doc",
   "deliverables": [],
+  "allowedFiles": null,
+  "protectedFiles": null,
+  "minTestCount": null,
+  "minTestDelta": null,
   "buildCmd": null,
   "testCmd": null,
   "startCmd": null,
   "healthPath": "/",
   "protectedPath": null,
+  "fuzzPaths": [],
+  "idorProbe": null,
   "assumptions": [],
   "criteria": [
     {

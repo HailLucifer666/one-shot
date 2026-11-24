@@ -1,10 +1,10 @@
 ---
 name: one-shot
-version: 0.2.0
-description: Autonomous spec-to-ship builder with an executable proof gate. Use whenever the user supplies a PRD, MVP, SOW, spec, bug report, or detailed idea and wants a complete, working, machine-verified deliverable in one run with no back-and-forth fixing.
+version: 0.3.0
+description: Autonomous spec-to-ship builder with a tamper-proof executable proof gate. Use whenever the user supplies a PRD, MVP, SOW, spec, bug report, or detailed idea and wants a complete, working, machine-verified deliverable in one run with no back-and-forth fixing.
 ---
 
-# one-shot (v0.2.0)
+# one-shot (v0.3.0)
 
 Deliver a finished, working, machine-verified project on the first pass. Spend tokens on executable checks, not boilerplate prose.
 
@@ -29,8 +29,8 @@ Deliver a finished, working, machine-verified project on the first pass. Spend t
 ## 4. Executable Release Gate (No Honor System)
 Before reporting done, follow `gate.md` and run the bundled verifier:
 `node <skill-dir>/scripts/verify.mjs --dir .`
-- It executes tests, build, contract criteria, live server probes (`401`/`400`/no stack trace), secret/unignored-`.env` scan, visible HTML placeholder scan, and deliverables check, writing `one-shot-work/GATE-RECEIPT.json`.
-- Exit `0` (`PASS`) is required to report done. Exit `1` (`BLOCKED`) -> fix the failing check(s) and re-run `scripts/verify.mjs`. Never report done without a green `one-shot-work/GATE-RECEIPT.json`.
+- It executes tests, build, contract criteria, diff-scope/test-floor guards, live server probes (`401`/malformed JSON/fuzz/IDOR), secret/unignored-`.env` scan, visible HTML placeholder scan, and Playwright DOM audit (overflow, WCAG contrast, dead controls, assets), writing a `treeHash`-signed `one-shot-work/GATE-RECEIPT.json`.
+- Exit `0` (`PASS`) on the unmodified final tree is required to report done (enforced via `--check-receipt` / `npx one-shot hook-check`). Any post-gate edit invalidates `treeHash` and requires re-running `scripts/verify.mjs`.
 
 ## 5. Rules & Final Report
 - Smallest correct change; no unrequested features; delete dead code.

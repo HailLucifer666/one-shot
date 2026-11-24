@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-EXPECTED_VERSION = "0.2.0"
+EXPECTED_VERSION = "0.3.0"
 LINE_LIMIT = 80
 
 skill = Path(__file__).resolve().parent.parent / "one-shot"

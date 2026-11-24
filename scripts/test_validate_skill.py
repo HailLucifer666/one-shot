@@ -62,7 +62,7 @@ class ValidateSkill(unittest.TestCase):
 
     def test_missing_version_fails(self):
         sk = self.skill / "SKILL.md"
-        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.2.0\n", ""),
+        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.3.0\n", ""),
                       encoding="utf-8")
         code, out = self.run_validator()
         self.assertEqual(code, 1)
@@ -70,11 +70,11 @@ class ValidateSkill(unittest.TestCase):
 
     def test_wrong_version_fails(self):
         sk = self.skill / "SKILL.md"
-        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.2.0\n", "version: 0.1.5\n"),
+        sk.write_text(sk.read_text(encoding="utf-8").replace("version: 0.3.0\n", "version: 0.1.5\n"),
                       encoding="utf-8")
         code, out = self.run_validator()
         self.assertEqual(code, 1)
-        self.assertIn("0.2.0", out)
+        self.assertIn("0.3.0", out)
 
     def test_oversized_skill_fails(self):
         # v0.2.0 tightens the kernel limit from 150 lines to 80 lines.

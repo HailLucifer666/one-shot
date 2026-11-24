@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * one-shot CLI (v0.2.0) — zero external dependencies (Node 20+ built-ins only).
+ * one-shot CLI (v0.3.0) — zero external dependencies (Node 20+ built-ins only).
  *
  * Commands:
- *   npx one-shot install [--target <dir>] [--home <dir>] [--verify]
- *   npx one-shot verify  [verify.mjs options...]
- *   npx one-shot init    [--dir <path>] [--force]
+ *   npx one-shot install    [--target <dir>] [--home <dir>] [--verify] [--with-hook]
+ *   npx one-shot verify     [verify.mjs options...]
+ *   npx one-shot hook-check [--dir <path>]
+ *   npx one-shot init       [--dir <path>] [--brownfield] [--git-hook] [--force]
  */
 
 import { spawnSync } from "node:child_process";
@@ -15,13 +16,14 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { checkReceipt, countTestDefinitions, sha256File, walkFiles } from "../one-shot/scripts/verify.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const SKILL_SRC = path.join(REPO_ROOT, "one-shot");
 const VERIFY_SCRIPT = path.join(SKILL_SRC, "scripts", "verify.mjs");
 const CONTRACT_TEMPLATE = path.join(SKILL_SRC, "templates", "contract.json");
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 const HARNESS_DIRS = [
   { name: "Claude Code", marker: ".claude", skillsRel: path.join(".claude", "skills") },
@@ -93,8 +95,8 @@ export function verifyInstall(targetSkillsDir, sourceDir = SKILL_SRC) {
     if (!/^name:\s*one-shot\b/m.test(content)) {
       errors.push("FINGERPRINT: 'name: one-shot' missing in installed SKILL.md");
     }
-    if (!/^version:\s*0\.2\.0\b/m.test(content)) {
-      errors.push("VERSION: 'version: 0.2.0' missing in installed SKILL.md");
+    if (!new RegExp(`^version:\\s*${VERSION.replace(/\./g, "\\.")}\\b`, "m").test(content)) {
+      errors.push(`VERSION: 'version: ${VERSION}' missing in installed SKILL.md`);
     }
   }
   return {
@@ -116,21 +118,49 @@ function copyDir(src, dst) {
   }
 }
 
+function installClaudeStopHook(homeDir) {
+  const claudeDir = path.join(homeDir, ".claude");
+  fs.mkdirSync(claudeDir, { recursive: true });
+  const settingsPath = path.join(claudeDir, "settings.json");
+  let settings = {};
+  if (fs.existsSync(settingsPath)) {
+    settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+  }
+  if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
+  if (!Array.isArray(settings.hooks.Stop)) settings.hooks.Stop = [];
+  const hookCmd = "npx one-shot hook-check";
+  const alreadyInstalled = settings.hooks.Stop.some((entry) =>
+    Array.isArray(entry?.hooks) && entry.hooks.some((h) => h?.command === hookCmd)
+  );
+  if (!alreadyInstalled) {
+    settings.hooks.Stop.push({
+      hooks: [{ type: "command", command: hookCmd }],
+    });
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+  }
+  return { settingsPath, alreadyInstalled };
+}
+
 function usage() {
   return [
-    `one-shot v${VERSION} — proof-carrying AI agent skill & executable verifier`,
+    `one-shot v${VERSION} — proof-carrying AI agent skill & harness-enforced verifier`,
     "",
     "Usage: one-shot <command> [options]",
     "",
     "Commands:",
-    "  install [--target <dir>] [--home <dir>] [--verify]",
+    "  install    [--target <dir>] [--home <dir>] [--verify] [--with-hook]",
     "      Auto-detect Claude Code, Cursor, Codex, OpenCode, ZCode, and Antigravity,",
-    "      install one-shot/, and verify byte-identity. Pass --verify to check only.",
-    "  verify  [options]",
-    "      Run the executable release-gate verifier (writes GATE-RECEIPT.json).",
-    "      Pass --help after verify for all verifier flags.",
-    "  init    [--dir <path>] [--force]",
-    "      Scaffold one-shot-work/contract.json in a project directory.",
+    "      install one-shot/, and verify byte-identity. Pass --with-hook to register",
+    "      the Claude Code Stop-Hook in ~/.claude/settings.json.",
+    "  verify     [options]",
+    "      Run the executable release-gate verifier (writes tamper-proof GATE-RECEIPT.json).",
+    "      Pass --check-receipt for fast treeHash validation, or --help for all flags.",
+    "  hook-check [--dir <path>]",
+    "      Fast Stop-Hook / pre-commit enforcer: exits 0 if no contract.json exists or",
+    "      receipt is fresh PASS; exits 2 if missing, BLOCKED, or stale after edits.",
+    "  init       [--dir <path>] [--brownfield] [--git-hook] [--force]",
+    "      Scaffold one-shot-work/contract.json (plus baseline.json with --brownfield",
+    "      and .git/hooks/pre-commit with --git-hook).",
     "",
     "Flags:",
     "  -v, --version    Print version",
@@ -142,10 +172,12 @@ function cmdInstall(args) {
   const targets = [];
   let homeDir = os.homedir();
   let verifyOnly = false;
+  let withHook = false;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--verify") { verifyOnly = true; continue; }
+    if (a === "--with-hook") { withHook = true; continue; }
     if (a === "-h" || a === "--help") { console.log(usage()); return 0; }
     if (a === "--target") {
       if (args[i + 1] === undefined) { console.error("ERROR: missing value for --target"); return 2; }
@@ -177,15 +209,23 @@ function cmdInstall(args) {
       for (const e of check.errors) console.error(`  - ${e}`);
     }
   }
+  if (withHook && !verifyOnly) {
+    const { settingsPath, alreadyInstalled } = installClaudeStopHook(homeDir);
+    console.log(`STOP-HOOK: ${alreadyInstalled ? "already present" : "registered"} in ${settingsPath}`);
+  }
   return allOk ? 0 : 1;
 }
 
 function cmdInit(args) {
   let dir = ".";
   let force = false;
+  let brownfield = false;
+  let gitHook = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--force") { force = true; continue; }
+    if (a === "--brownfield") { brownfield = true; continue; }
+    if (a === "--git-hook") { gitHook = true; continue; }
     if (a === "-h" || a === "--help") { console.log(usage()); return 0; }
     if (a === "--dir") {
       if (args[i + 1] === undefined) { console.error("ERROR: missing value for --dir"); return 2; }
@@ -195,15 +235,74 @@ function cmdInit(args) {
     console.error(`ERROR: unknown init option: ${a}`);
     return 2;
   }
-  const dest = path.join(path.resolve(dir), "one-shot-work", "contract.json");
+  const root = path.resolve(dir);
+  const workDir = path.join(root, "one-shot-work");
+  const dest = path.join(workDir, "contract.json");
   if (fs.existsSync(dest) && !force) {
     console.error(`ERROR: ${dest} already exists (pass --force to overwrite)`);
     return 1;
   }
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.mkdirSync(workDir, { recursive: true });
   fs.copyFileSync(CONTRACT_TEMPLATE, dest);
   console.log(`Created ${dest}`);
+
+  if (brownfield) {
+    const files = walkFiles(root);
+    const fileHashes = {};
+    for (const f of files) {
+      fileHashes[path.relative(root, f).replace(/\\/g, "/")] = sha256File(f);
+    }
+    const baseline = {
+      timestamp: new Date().toISOString(),
+      fileCount: files.length,
+      testCount: countTestDefinitions(root, files),
+      files: fileHashes,
+    };
+    const baselinePath = path.join(workDir, "baseline.json");
+    fs.writeFileSync(baselinePath, JSON.stringify(baseline, null, 2) + "\n", "utf-8");
+    console.log(`Created ${baselinePath} (${baseline.fileCount} files, ${baseline.testCount} tests)`);
+  }
+
+  if (gitHook) {
+    const hooksDir = path.join(root, ".git", "hooks");
+    if (!fs.existsSync(path.join(root, ".git"))) {
+      console.error(`ERROR: no .git directory found under ${root}`);
+      return 1;
+    }
+    fs.mkdirSync(hooksDir, { recursive: true });
+    const hookPath = path.join(hooksDir, "pre-commit");
+    const hookBody = "#!/bin/sh\n# Installed by one-shot v" + VERSION + "\nnpx one-shot hook-check --dir .\n";
+    fs.writeFileSync(hookPath, hookBody, { encoding: "utf-8", mode: 0o755 });
+    console.log(`Installed pre-commit hook at ${hookPath}`);
+  }
   return 0;
+}
+
+function cmdHookCheck(args) {
+  let dir = ".";
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "-h" || a === "--help") { console.log(usage()); return 0; }
+    if (a === "--dir") {
+      if (args[i + 1] === undefined) { console.error("ERROR: missing value for --dir"); return 2; }
+      dir = args[++i];
+      continue;
+    }
+    console.error(`ERROR: unknown hook-check option: ${a}`);
+    return 2;
+  }
+  const root = path.resolve(dir);
+  const contractPath = path.join(root, "one-shot-work", "contract.json");
+  if (!fs.existsSync(contractPath)) {
+    return 0; // Not a one-shot contracted workspace — zero friction
+  }
+  const result = checkReceipt(root);
+  if (result.ok) {
+    return 0;
+  }
+  console.error(`one-shot BLOCKED (${result.code}): ${result.detail}`);
+  console.error("Fix failing checks and run `npx one-shot verify --dir .` before finishing.");
+  return 2;
 }
 
 function cmdVerify(args) {
@@ -224,6 +323,7 @@ function main() {
   const [cmd, ...rest] = argv;
   if (cmd === "install") process.exit(cmdInstall(rest));
   if (cmd === "verify") process.exit(cmdVerify(rest));
+  if (cmd === "hook-check") process.exit(cmdHookCheck(rest));
   if (cmd === "init") process.exit(cmdInit(rest));
   console.error(`ERROR: unknown command '${cmd}'\n`);
   console.error(usage());

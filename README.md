@@ -8,17 +8,20 @@ Spec in, verified project out. A skill that makes an AI coding agent plan like a
 
 ```sh
 # Auto-detect Claude Code, Cursor, Codex, OpenCode, ZCode, and Antigravity,
-# install one-shot/, and verify byte-identity:
-npx one-shot install
+# install one-shot/, verify byte-identity, and register the Claude Code Stop-Hook:
+npx one-shot install --with-hook
 
 # Verify an existing installation byte-for-byte:
 npx one-shot install --verify
 
-# Scaffold one-shot-work/contract.json in a project:
-npx one-shot init
+# Scaffold one-shot-work/contract.json (add --brownfield for baseline.json, --git-hook for pre-commit):
+npx one-shot init --brownfield --git-hook
 
 # Run the executable release-gate verifier in any project or CI step:
 npx one-shot verify --dir .
+
+# Fast tamper/freshness check of GATE-RECEIPT.json against current working-tree treeHash:
+npx one-shot verify --dir . --check-receipt
 ```
 
 ### Shell installer (POSIX `sh`, no Node required to install)
@@ -48,12 +51,12 @@ Put your PRD, MVP, SOW, stack and references in your project folder, then run:
 
 No spec yet? Describe the idea. The skill creates `one-shot-work/contract.json` and binds every acceptance criterion to an executable check.
 
-## How it works (v0.2.0)
+## How it works (v0.3.0)
 
-1. **Contract first (1 file, not 6):** Creates `one-shot-work/contract.json` (from `templates/contract.json`) binding every acceptance criterion to an executable check command, plus deliverables and server/test commands.
+1. **Contract first (1 file, not 6):** Creates `one-shot-work/contract.json` (from `templates/contract.json`) binding every acceptance criterion to an executable check command, plus deliverables, server/test commands, and optional brownfield `allowedFiles` / `minTestCount` guards (`baseline.json`).
 2. **Adversarial domain packs:** Loads only what applies — `modules/app.md` (IDOR, auth bypass, malformed JSON, XSS, SSRF), `modules/web.md` (360/768/1280px overflow, WCAG AA contrast, zero dead clicks), `modules/brownfield.md` (diff-scope guard, watched-red regression test), and `modules/stack.md` (live registry lookup + major-version breaking-change trap check).
 3. **Reactive rigor:** Starts fast (watched-red acceptance tests -> minimal implementation) and escalates to <=150-line micro-slices + `one-shot-work/DIAGNOSIS.md` **only** after 2 consecutive failures on the same criterion.
-4. **Executable release gate (`verify.mjs`):** Runs tests, build, contract checks, live server probes (`401`/`403` auth guard, malformed JSON, no stack traces), `.env`/`.gitignore` + secret + visible-HTML placeholder scans, and optional Playwright checks, writing `one-shot-work/GATE-RECEIPT.json`. Exit `0` (`PASS`) is required to report done; exit `1` (`BLOCKED`) means NOT DONE.
+4. **Tamper-proof executable gate + Stop-Hook (`verify.mjs` & `hook-check`):** Runs tests, build, contract criteria, diff-scope & non-commented test-count floor, live server probes (`401`/`403` auth guard, malformed JSON, XSS/SQLi/proto-pollution fuzzing, multi-user IDOR probe), `.env`/`.gitignore` + secret + visible-HTML placeholder scans, and Playwright DOM checks (console errors, 360/768/1280px overflow, computed WCAG AA contrast, dead controls, broken/alt-less images). Writes `one-shot-work/GATE-RECEIPT.json` with a composite SHA-256 `treeHash`; `npx one-shot hook-check` blocks agent completion or `git commit` if any file changed after the gate passed.
 
 ## Results
 

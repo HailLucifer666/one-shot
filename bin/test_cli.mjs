@@ -19,13 +19,14 @@ function runCli(args) {
 test("--help and --version exit 0", () => {
   const h = runCli(["--help"]);
   assert.equal(h.status, 0, h.stderr);
-  assert.match(h.stdout, /one-shot v0\.2\.0/);
+  assert.match(h.stdout, /one-shot v0\.3\.0/);
   assert.match(h.stdout, /install/);
   assert.match(h.stdout, /verify/);
+  assert.match(h.stdout, /hook-check/);
 
   const v = runCli(["--version"]);
   assert.equal(v.status, 0, v.stderr);
-  assert.equal(v.stdout.trim(), "0.2.0");
+  assert.equal(v.stdout.trim(), "0.3.0");
 });
 
 test("unknown command exits 2", () => {
@@ -108,6 +109,85 @@ test("verify subcommand delegates to verify.mjs and propagates PASS (0) / BLOCKE
     const bad = runCli(["verify", "--dir", proj, "--skip-browser"]);
     assert.equal(bad.status, 1, bad.stdout + bad.stderr);
     assert.match(bad.stdout, /GATE: BLOCKED/);
+  } finally {
+    fs.rmSync(proj, { recursive: true, force: true });
+  }
+});
+
+test("Slice 5: hook-check is silent (exit 0) without contract, blocks (exit 2) on missing/stale receipt, passes (exit 0) on fresh PASS", () => {
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-hook-"));
+  try {
+    fs.writeFileSync(path.join(proj, "app.js"), "console.log(1);\n");
+    // 1. No contract.json -> zero friction (exit 0)
+    const noContract = runCli(["hook-check", "--dir", proj]);
+    assert.equal(noContract.status, 0, noContract.stdout + noContract.stderr);
+
+    // 2. Contract exists, no receipt yet -> blocks with exit 2
+    assert.equal(runCli(["init", "--dir", proj]).status, 0);
+    // Replace placeholder criterion with a real passing check
+    const cPath = path.join(proj, "one-shot-work", "contract.json");
+    fs.writeFileSync(cPath, JSON.stringify({ deliverables: ["app.js"], criteria: [] }));
+    const missing = runCli(["hook-check", "--dir", proj]);
+    assert.equal(missing.status, 2, missing.stdout + missing.stderr);
+    assert.match(missing.stderr, /MISSING_RECEIPT/);
+
+    // 3. Run verify -> fresh PASS receipt -> hook-check exits 0
+    assert.equal(runCli(["verify", "--dir", proj, "--skip-browser"]).status, 0);
+    const fresh = runCli(["hook-check", "--dir", proj]);
+    assert.equal(fresh.status, 0, fresh.stdout + fresh.stderr);
+
+    // 4. Edit app.js after verify -> hook-check blocks with exit 2 (STALE_OR_FORGED_RECEIPT)
+    fs.writeFileSync(path.join(proj, "app.js"), "console.log(2);\n");
+    const stale = runCli(["hook-check", "--dir", proj]);
+    assert.equal(stale.status, 2, stale.stdout + stale.stderr);
+    assert.match(stale.stderr, /STALE_OR_FORGED_RECEIPT/);
+  } finally {
+    fs.rmSync(proj, { recursive: true, force: true });
+  }
+});
+
+test("Slice 5: install --with-hook idempotently merges Claude Code Stop hook without clobbering existing settings", () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-hook-home-"));
+  try {
+    const claudeDir = path.join(fakeHome, ".claude");
+    fs.mkdirSync(claudeDir, { recursive: true });
+    const settingsPath = path.join(claudeDir, "settings.json");
+    fs.writeFileSync(settingsPath, JSON.stringify({ theme: "dark", hooks: { PreToolUse: [{ matcher: "Bash" }] } }, null, 2));
+
+    // First install --with-hook
+    const first = runCli(["install", "--home", fakeHome, "--with-hook"]);
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+    const s1 = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(s1.theme, "dark");
+    assert.equal(s1.hooks.PreToolUse.length, 1);
+    assert.ok(Array.isArray(s1.hooks.Stop) && s1.hooks.Stop.length === 1);
+
+    // Second install --with-hook is idempotent (does not duplicate Stop hook)
+    const second = runCli(["install", "--home", fakeHome, "--with-hook"]);
+    assert.equal(second.status, 0, second.stdout + second.stderr);
+    const s2 = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(s2.hooks.Stop.length, 1);
+  } finally {
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test("Slice 2 & 5: init --brownfield snapshots baseline.json and --git-hook installs pre-commit hook", () => {
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-bf-"));
+  try {
+    fs.mkdirSync(path.join(proj, ".git", "hooks"), { recursive: true });
+    fs.writeFileSync(path.join(proj, "server.js"), "export const x = 1;\n");
+    fs.mkdirSync(path.join(proj, "tests"), { recursive: true });
+    fs.writeFileSync(path.join(proj, "tests", "app.test.js"), 'test("a", () => {});\n');
+
+    const res = runCli(["init", "--dir", proj, "--brownfield", "--git-hook"]);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    const baseline = JSON.parse(fs.readFileSync(path.join(proj, "one-shot-work", "baseline.json"), "utf-8"));
+    assert.equal(baseline.testCount, 1);
+    assert.ok(baseline.files["server.js"]);
+    const hookFile = path.join(proj, ".git", "hooks", "pre-commit");
+    assert.ok(fs.existsSync(hookFile));
+    assert.match(fs.readFileSync(hookFile, "utf-8"), /hook-check/);
   } finally {
     fs.rmSync(proj, { recursive: true, force: true });
   }

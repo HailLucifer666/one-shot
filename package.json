@@ -1,6 +1,6 @@
 {
   "name": "one-shot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Autonomous spec-to-ship AI agent skill with an executable proof gate (zero dependencies).",
   "type": "module",
   "license": "MIT",
