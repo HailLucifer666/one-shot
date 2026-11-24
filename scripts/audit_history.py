@@ -66,6 +66,7 @@ that boundary.
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -118,8 +119,6 @@ _C_SHORT_ESCAPES = {
 # shapes lives inline. All matching runs on the raw patch line (diff marker
 # included) — markers are +/-/space, which never break a word boundary.
 PATTERNS = [
-    # The username itself, any case, whole word only.
-    ("windows-username", re.compile(r"\bfakeuser\b", re.IGNORECASE)),
     # Windows user-profile path, back- and forward-slash forms. Any drive
     # letter (profiles get relocated), case-insensitive, at least one char
     # after the final separator so a bare "C:\Users" mention stays clean.
@@ -132,6 +131,13 @@ PATTERNS = [
     # false-hit "task-" and "risk-"; the charset and length keep real key
     # shapes and reject prose.
     ("api-key-sk", re.compile(r"\bsk-[A-Za-z0-9_-]{8,}")),
+    # Secret shapes unified with benchmark/checks.py SECRET_PAT (2026-11-24).
+    ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("github-token",
+     re.compile(r"\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{30,})\b")),
+    ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+    ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
+    ("private-key-pem", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     # "Bearer" followed by a token-like string (8+ chars of RFC 3986-ish
     # token charset). Without the token requirement, "Bearer" alone or
     # "Bearer auth" in docs would false-hit.
@@ -151,6 +157,21 @@ PATTERNS = [
         r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
         r")\b")),
 ]
+
+
+def build_patterns(deny_words=None):
+    """Return PATTERNS plus whole-word patterns for any custom deny words."""
+    pats = list(PATTERNS)
+    if deny_words:
+        for raw_word in deny_words:
+            word = raw_word.strip()
+            if not word:
+                continue
+            pats.append((
+                "deny-word",
+                re.compile(r"(?<!\w)" + re.escape(word) + r"(?!\w)", re.IGNORECASE),
+            ))
+    return pats
 
 
 class ScanError(Exception):
@@ -187,7 +208,7 @@ def run_git_log(repo):
         "-c", "diff.mnemonicPrefix=false",
         "-c", "diff.srcPrefix=a/",
         "-c", "diff.dstPrefix=b/",
-        "log", "--all", "-p",
+        "log", "--all", "-p", "--text",
         "--no-color", "--pretty=medium", "--no-ext-diff",
         "--no-abbrev-commit", "--no-textconv",
     ]
@@ -275,7 +296,7 @@ def _excerpt_around(raw_line, match):
     return excerpt
 
 
-def _scan_line(raw_line, commit, path, findings, seen):
+def _scan_line(raw_line, commit, path, findings, seen, patterns=PATTERNS):
     """Match every pattern against one patch line; append deduped findings.
 
     Every match on the line is reported (finditer, not just the first),
@@ -285,7 +306,7 @@ def _scan_line(raw_line, commit, path, findings, seen):
     """
     if commit is None or not raw_line.strip():
         return
-    for name, regex in PATTERNS:
+    for name, regex in patterns:
         for match in regex.finditer(raw_line):
             excerpt = _excerpt_around(raw_line, match)
             key = (name, commit, path, excerpt)
@@ -295,7 +316,7 @@ def _scan_line(raw_line, commit, path, findings, seen):
             findings.append(Finding(name, commit, path, excerpt))
 
 
-def scan_log_text(text):
+def scan_log_text(text, deny_words=None):
     """Pure function: `git log -p` text in -> deduped findings out.
 
     Walks the log line by line, tracking the current commit (from
@@ -307,10 +328,9 @@ def scan_log_text(text):
     correct it. git does NOT quote spaces -- a space filename arrives
     unquoted with one trailing TAB separator (stripped here) -- and paths
     quoted by core.quotePath (non-ASCII) are C-unescaped back into real
-    filenames. A path is trusted only from `--- / +++` lines with a/
-    b/ /dev/null prefixes, quoted or not (_AB_PATH_LINE_RE /
-    _QUOTED_PATH_LINE_RE), so removed content like `-- sql comments`
-    cannot poison the FILE column.
+    filenames. Hunk state (`@@ ... @@`) is tracked so once inside a hunk,
+    removed content lines like `--- a/b ratio comment` are never mistaken
+    for file-path headers.
 
     Tripwire (quality-audit fix, 2026-11-07): patch lines with zero commit
     headers means the text is not in the expected --pretty=medium shape
@@ -318,10 +338,12 @@ def scan_log_text(text):
     or a future git change altered the shape). Raise ScanError so the run
     exits 2 instead of reporting a false "clean".
     """
+    patterns = build_patterns(deny_words)
     findings = []
     seen = set()
     commit = None
     path = None
+    in_hunk = False
     patch_lines = 0
     commit_headers = 0
     for raw in text.split("\n"):
@@ -329,34 +351,39 @@ def scan_log_text(text):
         commit_match = _COMMIT_RE.match(line)
         if commit_match:
             commit_headers += 1
-            commit, path = commit_match.group(1), None
+            commit, path, in_hunk = commit_match.group(1), None, False
             continue
         if line.startswith("diff --git "):
             patch_lines += 1
+            in_hunk = False
             path = _path_from_diff_git_line(line)
-            _scan_line(line, commit, path, findings, seen)
+            _scan_line(line, commit, path, findings, seen, patterns)
             continue
-        if _AB_PATH_LINE_RE.match(line):
-            patch_lines += 1
-            # git does not quote spaces: a space filename arrives unquoted
-            # with one trailing TAB separator (`+++ b/my file.sql\t`).
-            new_path = _strip_ab_prefix(line[4:]).rstrip("\t")
-            if new_path and new_path != "/dev/null":
-                path = new_path
-            _scan_line(line, commit, path, findings, seen)
+        if line.startswith("@@ "):
+            in_hunk = True
             continue
-        quoted_match = _QUOTED_PATH_LINE_RE.match(line)
-        if quoted_match:
-            patch_lines += 1
-            new_path = _strip_ab_prefix(
-                _unquote_git_path(quoted_match.group(1)))
-            if new_path and new_path != "/dev/null":
-                path = new_path
-            _scan_line(line, commit, path, findings, seen)
-            continue
+        if not in_hunk:
+            if _AB_PATH_LINE_RE.match(line):
+                patch_lines += 1
+                # git does not quote spaces: a space filename arrives unquoted
+                # with one trailing TAB separator (`+++ b/my file.sql\t`).
+                new_path = _strip_ab_prefix(line[4:]).rstrip("\t")
+                if new_path and new_path != "/dev/null":
+                    path = new_path
+                _scan_line(line, commit, path, findings, seen, patterns)
+                continue
+            quoted_match = _QUOTED_PATH_LINE_RE.match(line)
+            if quoted_match:
+                patch_lines += 1
+                new_path = _strip_ab_prefix(
+                    _unquote_git_path(quoted_match.group(1)))
+                if new_path and new_path != "/dev/null":
+                    path = new_path
+                _scan_line(line, commit, path, findings, seen, patterns)
+                continue
         if line[:1] in ("+", "-"):
             patch_lines += 1
-            _scan_line(line, commit, path, findings, seen)
+            _scan_line(line, commit, path, findings, seen, patterns)
             continue
         # Everything else (Author/Date headers, index/mode lines, hunk @@
         # headers, 4-space-indented commit messages) is git metadata or
@@ -383,10 +410,16 @@ def main(argv=None):
                     "(diff content only, never git metadata).")
     parser.add_argument("--repo", default=".",
                         help="path to the git repository (default: current directory)")
+    parser.add_argument("--deny-word", action="append", default=[],
+                        help="custom whole-word literal to flag (repeatable; "
+                             "also reads comma-separated AUDIT_DENY_WORDS env var)")
     args = parser.parse_args(argv)
+    env_words = [w.strip() for w in os.environ.get("AUDIT_DENY_WORDS", "").split(",")
+                 if w.strip()]
+    deny_words = list(args.deny_word) + env_words
     try:
         log_text = run_git_log(args.repo)
-        findings = scan_log_text(log_text)
+        findings = scan_log_text(log_text, deny_words=deny_words)
     except ScanError as exc:
         # Covers both subprocess failures and the scan_log_text tripwire
         # (patch content without commit headers): never a silent "clean".

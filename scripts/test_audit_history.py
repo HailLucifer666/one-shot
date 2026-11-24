@@ -271,20 +271,22 @@ class ScanLogTextUnitTests(unittest.TestCase):
         self.assertIn("172.16.5.4", joined)
 
     def test_username_and_profile_path_both_fire(self):
-        pats = self._patterns(LOG_WITH_HITS)
-        self.assertIn("windows-username", pats)
+        findings = audit_history.scan_log_text(LOG_WITH_HITS, deny_words=["fakeuser"])
+        pats = [f.pattern for f in findings]
+        self.assertIn("deny-word", pats)
         self.assertIn("windows-profile-path", pats)
         self.assertTrue(
-            any("fakeuser" in e for e in self._excerpts(LOG_WITH_HITS, "windows-username")))
+            any("fakeuser" in f.excerpt for f in findings if f.pattern == "deny-word"))
 
     def test_forward_slash_profile_flags_path_not_username(self):
+        findings = audit_history.scan_log_text(LOG_WITH_HITS, deny_words=["fakeuser"])
         self.assertTrue(
-            any("C:/Users/dev/notes" in e
-                for e in self._excerpts(LOG_WITH_HITS, "windows-profile-path")))
+            any("C:/Users/dev/notes" in f.excerpt
+                for f in findings if f.pattern == "windows-profile-path"))
         self.assertNotIn(
-            "windows-username",
-            [f.pattern for f in self._scan(LOG_WITH_HITS) if "C:/Users/dev" in f.excerpt],
-            "a profile path of another user must not fire the fakeuser username pattern")
+            "deny-word",
+            [f.pattern for f in findings if "C:/Users/dev" in f.excerpt],
+            "a profile path of another user must not fire the fakeuser deny-word pattern")
 
     def test_innocent_lines_produce_no_findings(self):
         # task-, risk-, 1.2.3, public IP, bare Bearer, 172.32.x: all clean.
@@ -468,6 +470,76 @@ class ScanLogTextUnitTests(unittest.TestCase):
             self.assertEqual("caf\u00e9.md", findings[0].file,
                              "/dev/null side must be skipped as a path "
                              "setter, got: {}".format(findings[0].file))
+
+    def test_deny_word_parameter_flags_custom_identifier_only(self):
+        # Regression 2026-11-24 (A2 / Phase 0.1, watched red): personal
+        # identifiers must be passed via deny_words / --deny-word /
+        # AUDIT_DENY_WORDS rather than hardcoded in PATTERNS.
+        text = _commit_block(SHA_A, "notes.md", [
+            "@@ -1,1 +1,2 @@",
+            "+owner is fakeuser on workstation",
+            "+other user is devperson",
+        ])
+        self.assertEqual([], audit_history.scan_log_text(text))
+        findings = audit_history.scan_log_text(text, deny_words=["fakeuser"])
+        self.assertEqual(["deny-word"], [f.pattern for f in findings])
+        self.assertIn("fakeuser", findings[0].excerpt)
+        # Adjacent false-positive guard: unrelated word must not fire.
+        self.assertFalse(any("devperson" in f.excerpt for f in findings))
+
+    def test_unified_secret_patterns_aws_github_google_slack_pem(self):
+        # Regression 2026-11-24 (A2 / Phase 0.2, watched red): audit_history
+        # must cover the same secret families as benchmark/checks.py
+        # (AWS, GitHub classic & fine-grained, Google API, Slack, PEM keys).
+        text = _commit_block(SHA_A, "secrets.env", [
+            "@@ -0,0 +1,6 @@",
+            "+AWS_KEY=AKIAIOSFODNN7EXAMPLE",
+            "+GH_CLASSIC=ghp_123456789012345678901234567890123456",
+            "+GH_FINE=github_pat_123456789012345678901234567890",
+            "+GAPI=AIzaSyA12345678901234567890123456789012",
+            "+SLACK=xoxb-1234567890-abcdef",
+            "+-----BEGIN RSA PRIVATE KEY-----",
+        ])
+        pats = set(self._patterns(text))
+        for expected in ("aws-access-key", "github-token", "google-api-key",
+                         "slack-token", "private-key-pem"):
+            self.assertIn(expected, pats, f"missing secret pattern {expected}")
+        gh_hits = [f for f in self._scan(text) if f.pattern == "github-token"]
+        self.assertEqual(2, len(gh_hits),
+                         "both ghp_ and github_pat_ forms must fire")
+        # Adjacent false-positive guard: short prefixes and PUBLIC KEY stay clean.
+        innocent = _commit_block(SHA_B, "docs.md", [
+            "@@ -0,0 +1,5 @@",
+            "+AKIA123 is too short",
+            "+ghp_short is too short",
+            "+AIza_short is too short",
+            "+xoxb-123 is too short",
+            "+-----BEGIN PUBLIC KEY-----",
+        ])
+        self.assertEqual([], self._scan(innocent))
+
+    def test_removed_ab_prefixed_sql_comment_inside_hunk_does_not_poison_file(self):
+        # Regression 2026-11-24 (A2 / Phase 0.3, watched red): a removed SQL
+        # comment `-- a/b ratio comment` renders as `--- a/b ratio comment`,
+        # which previously matched _AB_PATH_LINE_RE and poisoned FILE to
+        # 'b ratio comment'. Tracking hunk state (@@ ... @@) prevents any
+        # patch-body line from being interpreted as a file header.
+        text = "\n".join([
+            "commit " + SHA_A,
+            "diff --git a/query.sql b/query.sql",
+            "--- a/query.sql",
+            "+++ b/query.sql",
+            "@@ -1,2 +1,2 @@",
+            "--- a/b ratio comment",
+            "+SELECT 1;",
+            "+api_key = \"fakekeyvalue123\"",
+            "",
+        ])
+        findings = self._scan(text)
+        self.assertEqual(["api-key-literal"], [f.pattern for f in findings])
+        self.assertEqual("query.sql", findings[0].file,
+                         "removed '-- a/b ratio comment' inside hunk must not "
+                         "poison FILE, got: {}".format(findings[0].file))
 
 
 class MainUnitTests(unittest.TestCase):
@@ -654,6 +726,43 @@ class EndToEndTests(unittest.TestCase):
         self.assertNotIn("TEXTCONV-REPLACED-THIS-CONTENT", done.stdout,
                          "textconv output must not reach the findings:\n"
                          + done.stdout)
+
+    def test_gitattributes_minus_diff_cannot_hide_secret(self):
+        # Regression 2026-11-24 (A2 / Phase 0.3, watched red): `.gitattributes`
+        # with `*.secret -diff` (or `binary`) caused `git log -p` to emit
+        # `Binary files ... differ` and skip the planted secret, exiting 0.
+        # Passing --text to git log forces patch output for -diff files.
+        self._commit_file(".gitattributes", "*.secret -diff\n")
+        self._commit_file("key.secret",
+                          'api_key = "sk-testFAKE0000000000000000"\n')
+        done = self._run_scanner()
+        self.assertEqual(1, done.returncode,
+                         "-diff gitattributes must not hide secrets:\n"
+                         + done.stdout + done.stderr)
+        self.assertIn("api-key-sk", done.stdout)
+        self.assertIn("sk-testFAKE", done.stdout)
+
+    def test_cli_deny_word_and_env_var(self):
+        # Regression 2026-11-24 (A2 / Phase 0.1, watched red): custom PII
+        # words work via --deny-word CLI flag and AUDIT_DENY_WORDS env var.
+        self._commit_file("note.md", "local owner is fakeuser\n")
+        clean = self._run_scanner()
+        self.assertEqual(0, clean.returncode, clean.stdout + clean.stderr)
+        flagged = subprocess.run(
+            [sys.executable, "-I", self.scanner, "--repo", self.repo,
+             "--deny-word", "fakeuser"],
+            capture_output=True, text=True)
+        self.assertEqual(1, flagged.returncode, flagged.stdout + flagged.stderr)
+        self.assertIn("deny-word", flagged.stdout)
+        self.assertIn("fakeuser", flagged.stdout)
+        env = os.environ.copy()
+        env["AUDIT_DENY_WORDS"] = "otherword, fakeuser"
+        env_flagged = subprocess.run(
+            [sys.executable, "-I", self.scanner, "--repo", self.repo],
+            capture_output=True, text=True, env=env)
+        self.assertEqual(1, env_flagged.returncode,
+                         env_flagged.stdout + env_flagged.stderr)
+        self.assertIn("deny-word", env_flagged.stdout)
 
 
 if __name__ == "__main__":
