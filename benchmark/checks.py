@@ -20,6 +20,7 @@ Exit code is 0 whenever the checks ran. A wrong invocation (missing or
 nonexistent --dir, bad --spec) exits 2 via argparse without scoring.
 """
 import argparse
+import ast
 import csv
 import hashlib
 import json
@@ -30,8 +31,8 @@ from pathlib import Path
 
 SKIP_DIRS = {"node_modules", ".git", ".next", "dist", "build", ".venv", "venv",
              "__pycache__", "one-shot-work", ".cache"}
-CODE_EXTS = {".js", ".ts", ".jsx", ".tsx", ".py", ".html", ".htm", ".vue",
-             ".svelte", ".css"}
+CODE_EXTS = {".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".py", ".html",
+             ".htm", ".vue", ".svelte", ".css"}
 # 2026-11-05 (audit): the secrets scan reads config/data file types too - a
 # token pasted into config.yaml or a seed .sql was invisible to CODE_EXTS.
 SCAN_EXTS = CODE_EXTS | {".json", ".yaml", ".yml", ".toml", ".sql", ".sh",
@@ -267,7 +268,7 @@ def spec02(root):
         scanned = list(iter_files(root, SCAN_EXTS))
         blob10 = "\n".join(read(p) for p in scanned) + read(root / ".env") \
             + read(root / ".env.example") + read(root / "README.md")
-        env_ignored = re.search(r"^\.env\b", read(root / ".gitignore"), re.M) is not None
+        env_ignored = _gitignore_ignores_env(read(root / ".gitignore"))
         env_committed = (root / ".env").is_file() and not env_ignored
         secret_pat = re.search(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}"
                                r"|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}"
@@ -548,14 +549,54 @@ NET_CALL = re.compile(r"\bfetch\s*\(|XMLHttpRequest|\bWebSocket\b|\bimport\s*\(|
 DYNAMIC_EXEC = re.compile(
     r"eval\s*\(|\bFunction\s*\(|setTimeout\s*\(\s*[\"'`]|setInterval\s*\(\s*[\"'`]")
 BENIGN_SCHEMES = ("mailto:", "tel:")
-# 2026-11-07 (wave-2 review): JS comment spans, for classifying denylist hits.
-# A hit inside a comment cannot fail a criterion - the skill arm writes
-# self-checkers whose comments name the anti-pattern they grep for (the
-# spec01 c7 lesson, 2026-11-06). Hits in code stay conclusive. A "//" inside
-# a string literal (e.g. "https://...") can create a false span; that only
-# ever downgrades a FAIL to MANUAL, never upgrades a PASS.
+# 2026-11-24 (audit A1): string-aware comment strippers so `//` inside
+# `"https://..."` is never treated as a JS line comment, and HTML markup
+# outside `<script>`/`<style>` is never fed to JS comment stripping.
+_JS_TOKEN_RE = re.compile(
+    r'"(?:\\.|[^"\\\n])*"'
+    r"|'(?:\\.|[^'\\\n])*'"
+    r"|`(?:\\.|[^`\\])*`"
+    r"|(?P<comment>/\*.*?\*/|//[^\n]*)",
+    re.S,
+)
+_CSS_TOKEN_RE = re.compile(
+    r'"(?:\\.|[^"\\\n])*"'
+    r"|'(?:\\.|[^'\\\n])*'"
+    r"|(?P<comment>/\*.*?\*/)",
+    re.S,
+)
+_SQL_TOKEN_RE = re.compile(
+    r"'(?:''|\\.|[^'])*'"
+    r'|"(?:""|\\.|[^"])*"'
+    r"|(?P<comment>/\*.*?\*/|--[^\n]*)",
+    re.S,
+)
+_SCRIPT_BLOCK_RE = re.compile(r"(<script\b[^>]*>)(.*?)(</script>)", re.I | re.S)
+_STYLE_BLOCK_RE = re.compile(r"(<style\b[^>]*>)(.*?)(</style>)", re.I | re.S)
 JS_COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 PY_COMMENT = re.compile(r"#[^\n]*")
+
+
+def _gitignore_ignores_env(text):
+    """True when .gitignore has an active rule ignoring `.env` itself.
+
+    2026-11-24 (audit A5): `^\\.env\\b` falsely matched `.env.local` because
+    `.` is non-word. Evaluates rules top-to-bottom so `!.env` negations work.
+    """
+    ignored = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if re.fullmatch(r"/?\.env\*?", line):
+            ignored = True
+        elif re.fullmatch(r"!/\.env\*?|!\.env\*?", line):
+            ignored = False
+    return ignored
+
+
+def _strip_tokens(text, token_re):
+    return token_re.sub(lambda m: " " if m.group("comment") is not None else m.group(0), text)
 
 
 def comment_pattern(suffix):
@@ -567,7 +608,22 @@ def comment_pattern(suffix):
 
 
 def strip_comments(text, suffix):
-    return comment_pattern(suffix).sub(" ", text)
+    if suffix in {".html", ".htm", ".vue", ".svelte"}:
+        out_text = _SCRIPT_BLOCK_RE.sub(
+            lambda m: m.group(1) + _strip_tokens(m.group(2), _JS_TOKEN_RE) + m.group(3),
+            text,
+        )
+        return _STYLE_BLOCK_RE.sub(
+            lambda m: m.group(1) + _strip_tokens(m.group(2), _CSS_TOKEN_RE) + m.group(3),
+            out_text,
+        )
+    if suffix == ".css":
+        return _strip_tokens(text, _CSS_TOKEN_RE)
+    if suffix == ".sql":
+        return _strip_tokens(text, _SQL_TOKEN_RE)
+    if suffix in {".py", ".yaml", ".yml", ".ini", ".cfg", ".env", ".toml", ".sh"}:
+        return PY_COMMENT.sub(" ", text)
+    return _strip_tokens(text, _JS_TOKEN_RE)
 
 
 def external_refs(html):
@@ -849,7 +905,8 @@ def spec08(root):
     # only inside a comment is MANUAL (spec02's scan keeps its own broader,
     # already-pinned scope - the two criteria differ, so their scans do too).
     scanned = list(iter_files(root, CODE_EXTS | {".json", ".yaml", ".yml",
-                                                 ".ini", ".cfg"}))
+                                                 ".ini", ".cfg", ".toml",
+                                                 ".sql", ".sh"}))
     secret = secret_hit = comment_secret = None
     for p in scanned + [root / ".env"]:
         raw = read(p)
@@ -1150,54 +1207,21 @@ def _spec10_locate(root, name, exts):
 
 
 def _py_import_names(src):
-    """Top-level module names from import statements. 2026-11-07 (wave-2
-    review): multi-imports yield every comma-separated name (import csv,
-    requests used to pass with only csv seen), 'as' aliases are stripped, and
-    a match that survives only inside a triple-quoted string or a # comment is
-    not an import (a docstring mentioning one must not false-FAIL)."""
+    """Top-level module names from import statements via stdlib ast.parse().
+
+    2026-11-24 (audit A4): retired the hand-rolled regex state machine in favor
+    of Python's real parser. Raises SyntaxError on unparseable source so the
+    caller emits MANUAL instead of silently passing broken code.
+    """
+    tree = ast.parse(src)
     names = []
-    in_str = None
-    for line in src.splitlines():
-        if in_str:
-            end = line.find(in_str)
-            if end == -1:
-                continue
-            line = line[end + 3:]
-            in_str = None
-        # 2026-11-07 (wave-2 re-review N3): handle the EARLIEST triple quote by
-        # position - a fixed for-order let an unpaired """ inside a ''' string
-        # truncate the line before the real closer, hiding later imports
-        while True:
-            cands = [(line.find(q), q) for q in ('"""', "'''")]
-            cands = [(pos, q) for pos, q in cands if pos != -1]
-            if not cands:
-                break
-            pos, q = min(cands)
-            end = line.find(q, pos + 3)
-            if end == -1:
-                in_str = q
-                line = line[:pos]
-                break
-            line = line[:pos] + " " + line[end + 3:]
-        # 2026-11-07 (wave-2 re-review X1/X3): mask single-line strings BEFORE
-        # the comment strip - a "#" inside a string used to eat the rest of the
-        # line including a real "; import x", and a "; import x" inside a
-        # string manufactured a fake statement after the N2 split. Escaped
-        # quotes only over-mask within one line: bounded under-flag.
-        line = re.sub(r'"[^"\n]*"|\'[^\'\n]*\'', " ", line)
-        line = PY_COMMENT.sub("", line)
-        # 2026-11-07 (wave-2 re-review N2): semicolon-chained statements
-        for stmt in line.split(";"):
-            m = re.match(r"\s*import\s+(.+)$", stmt)
-            if m:
-                for part in m.group(1).split(","):
-                    name = re.match(r"\s*([A-Za-z_][\w.]*)", part)
-                    if name:
-                        names.append(name.group(1))
-                continue
-            m = re.match(r"\s*from\s+([A-Za-z_][\w.]*)", stmt)
-            if m:
-                names.append(m.group(1))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:
+                names.append(node.module)
     return names
 
 
@@ -1309,18 +1333,24 @@ def spec10(root):
     else:
         src = read(tp)
         stdlib = _stdlib_names()
-        bad = []
-        for name in _py_import_names(src):
-            top = name.split(".")[0]
-            if top != tp.stem and top not in stdlib:
-                bad.append(top)
-        if bad:
-            c1 = ("FAIL", "non-stdlib import: " + ", ".join(sorted(set(bad))))
-        elif re.search(r"__import__\s*\(|\bimportlib\.", src):
-            c1 = ("MANUAL", "dynamic import pattern found (__import__ or importlib) - "
-                            "confirm all imports are stdlib by eye")
+        try:
+            imported = _py_import_names(src)
+        except SyntaxError as exc:
+            c1 = ("MANUAL", f"transform.py has a syntax error ({exc.msg} at line "
+                            f"{exc.lineno}) - cannot verify imports statically")
         else:
-            c1 = ("PASS", "single transform.py, all imports stdlib (denylist scan)")
+            bad = []
+            for name in imported:
+                top = name.split(".")[0]
+                if top != tp.stem and top not in stdlib:
+                    bad.append(top)
+            if bad:
+                c1 = ("FAIL", "non-stdlib import: " + ", ".join(sorted(set(bad))))
+            elif re.search(r"__import__\s*\(|\bimportlib\.", src):
+                c1 = ("MANUAL", "dynamic import pattern found (__import__ or importlib) - "
+                                "confirm all imports are stdlib by eye")
+            else:
+                c1 = ("PASS", "single transform.py, all imports stdlib (denylist scan)")
     c2 = ("MANUAL", "run `python transform.py expenses.csv report.json` (expect exit 0 + "
                     "report written) and `python transform.py missing.csv out.json` "
                     "(expect exit 2 + stderr naming the file); save both outputs in the "

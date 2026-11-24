@@ -415,6 +415,30 @@ class Spec02(FixtureTest):
         res = self.run_checks("02", files)
         self.assertVerdict(res, 10, "PASS")
 
+    def test_gitignore_env_local_only_does_not_ignore_env(self):
+        # Regression 2026-11-24 (A5, watched red): `^\.env\b` matched `.env.local`
+        # because `.` is non-word, so an unignored `.env` falsely passed.
+        files = dict(CRUD)
+        files[".gitignore"] = ".env.local\n"
+        files[".env"] = "DB=postgres://u:p@h/d\n"
+        res = self.run_checks("02", files)
+        self.assertVerdict(res, 10, "FAIL", ".env file is present")
+
+    def test_gitignore_env_negation_does_not_ignore_env(self):
+        files = dict(CRUD)
+        files[".gitignore"] = ".env\n!.env\n"
+        files[".env"] = "DB=postgres://u:p@h/d\n"
+        res = self.run_checks("02", files)
+        self.assertVerdict(res, 10, "FAIL", ".env file is present")
+
+    def test_gitignore_env_star_ignores_env(self):
+        # Adjacent false-positive guard: `.env*` genuinely ignores `.env`.
+        files = dict(CRUD)
+        files[".gitignore"] = ".env*\n"
+        files[".env"] = "DB=postgres://u:p@h/d\n"
+        res = self.run_checks("02", files)
+        self.assertVerdict(res, 10, "PASS")
+
     def test_go_stack_tests_are_manual_not_fail(self):
         # FIXED 2026-11-05: other-language files make the absence non-conclusive
         res = self.run_checks("02", {"main.go": "package main\n",
@@ -727,6 +751,41 @@ class Spec06(FixtureTest):
         res = self.run_checks("06", {"index.html": html})
         self.assertVerdict(res, 1, "FAIL", "external reference")
 
+    def test_quoted_https_cdn_link_fails(self):
+        # Regression 2026-11-24 (A1, watched red): JS_COMMENT on HTML treated
+        # `//` inside `https://` as a line comment, eating the closing quote.
+        html = '<!doctype html><link rel="stylesheet" href="https://cdn.example.com/a.css"><h1>Calc</h1>'
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "FAIL", "https://cdn.example.com/a.css")
+
+    def test_quoted_https_cdn_script_fails(self):
+        html = '<!doctype html><script src="https://cdn.example.com/a.js"></script><h1>Calc</h1>'
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "FAIL", "https://cdn.example.com/a.js")
+
+    def test_same_line_url_and_fetch_fails(self):
+        html = CALC_HTML.replace(
+            "function parseTokens(e) { return 0; }",
+            'const u="https://a.b"; fetch("/api"); function parseTokens(e) { return 0; }')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "FAIL", "fetch")
+
+    def test_same_line_url_and_eval_fails(self):
+        html = CALC_HTML.replace(
+            "function parseTokens(e) { return 0; }",
+            'const u="https://a.b"; eval("1+1"); function parseTokens(e) { return 0; }')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 2, "FAIL", "eval(")
+
+    def test_js_line_comment_url_still_manual(self):
+        # Adjacent false-positive guard: real JS line comment stays MANUAL.
+        html = CALC_HTML.replace(
+            "function parseTokens(e) { return 0; }",
+            '// old: https://cdn.example.com/a.js and fetch("/api")\n'
+            'function parseTokens(e) { return 0; }')
+        res = self.run_checks("06", {"index.html": html})
+        self.assertVerdict(res, 1, "MANUAL", "only inside a comment")
+
 
 # ---------------------------------------------------------------- spec 07
 
@@ -946,6 +1005,35 @@ class Spec08(FixtureTest):
         # to vanish with the strip to a silent PASS - the fallback scans raw
         files = dict(self.FULL)
         files["index.html"] = "<!-- old example key: sk-" + "a" * 24 + " -->\n<p>x</p>"
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "MANUAL", "only inside a comment")
+
+    def test_same_line_url_and_secret_fails(self):
+        # Regression 2026-11-24 (A1, watched red): `//` in `https://` string
+        # must not comment out a secret literal on the same line.
+        files = dict(self.FULL)
+        files["server.js"] = 'const u="https://localhost/a"; const k="sk-abcdefghijklmnopqrstuvwx";\n'
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "FAIL", "secret-like literal")
+
+    def test_secret_in_mjs_fails(self):
+        # Regression 2026-11-24 (A6, watched red): .mjs must be in CODE_EXTS.
+        files = dict(self.FULL)
+        files["server.mjs"] = 'const K="sk-abcdefghijklmnopqrstuvwx";\n'
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "FAIL", "secret-like literal")
+
+    def test_secret_in_toml_fails(self):
+        # Regression 2026-11-24 (A6, watched red): .toml must be scanned in spec08 c6.
+        files = dict(self.FULL)
+        files["config.toml"] = 'key = "sk-abcdefghijklmnopqrstuvwx"\n'
+        res = self.run_checks("08", files)
+        self.assertVerdict(res, 6, "FAIL", "secret-like literal")
+
+    def test_comment_secret_in_toml_goes_manual(self):
+        # Adjacent false-positive guard: # comment in .toml stays MANUAL.
+        files = dict(self.FULL)
+        files["config.toml"] = '# example: key = "sk-abcdefghijklmnopqrstuvwx"\n'
         res = self.run_checks("08", files)
         self.assertVerdict(res, 6, "MANUAL", "only inside a comment")
 
@@ -1378,6 +1466,30 @@ class Spec10(FixtureTest):
         report["invalid_rows"] = GOLDEN_REPORT["invalid_rows"] + [{"row": 9, "reason": "dup"}]
         res = self.run_checks("10", self.golden_files({"report.json": json.dumps(report)}))
         self.assertVerdict(res, 5, "FAIL", "duplicate row numbers")
+
+    def test_backslash_continued_non_stdlib_import_fails(self):
+        # Regression 2026-11-24 (A4, watched red): regex line parser missed
+        # line-continued imports; ast.parse catches all valid Python syntax.
+        files = self.golden_files()
+        files["transform.py"] = "import \\\n    requests\nprint(requests)\n"
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
+
+    def test_escaped_quote_before_import_fails(self):
+        # Regression 2026-11-24 (A4, watched red): escaped quote in string
+        # fooled regex string masking and hid a real `import requests`.
+        files = self.golden_files()
+        files["transform.py"] = 'x = "foo \\""; import requests; y = "\\""\n'
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "FAIL", "non-stdlib import: requests")
+
+    def test_syntax_error_py_goes_manual(self):
+        # Regression 2026-11-24 (A4, watched red): unparseable Python must
+        # emit MANUAL, never silently PASS.
+        files = self.golden_files()
+        files["transform.py"] = "def broken(:\n    pass\n"
+        res = self.run_checks("10", files)
+        self.assertVerdict(res, 1, "MANUAL", "syntax error")
 
 
 # ---------------------------------------------------------------- CLI
