@@ -15,6 +15,7 @@ import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const VERSION = "0.2.0";
 
@@ -516,7 +517,10 @@ async function main() {
   }
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const isMain = Boolean(
+  process.argv[1] &&
+  fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url))
+);
 if (isMain) {
   main();
 }
