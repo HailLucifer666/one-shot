@@ -140,6 +140,43 @@ class TestSummaryGate(SummaryFixture):
         self.assertIn("| m | skill | 1 |", out)
         self.assertIn("tokens_used is 'about a million'", out)
 
+    def test_null_follow_up_never_counts_as_first_run_pass(self):
+        # Regression 2026-11-24 (A7, watched red): `(None or 0) == 0` counted
+        # an unknown follow_up_prompts_needed=null as a first-run pass (1/1).
+        self.make_run("m", "skill", "01-landing-page", 1,
+                      result={"criteria_passed": 10, "follow_up_prompts_needed": None,
+                              "tokens_used": 100, "notes": "t"},
+                      sentinel={"exit": "completed"})
+        out = self.run_summary()
+        self.assertIn("| m | skill | 1 | 0/1 | 10.0 | n/a | 100 |", out)
+
+    def test_string_zero_follow_up_counts_as_first_run_pass(self):
+        # Regression 2026-11-24 (A7, watched red): `"0"` passed regex validation
+        # then failed `("0" or 0) == 0`, scoring 0/1 instead of 1/1.
+        self.make_run("m", "skill", "01-landing-page", 1,
+                      result={"criteria_passed": 10, "follow_up_prompts_needed": "0",
+                              "tokens_used": 100, "notes": "t"},
+                      sentinel={"exit": "completed"})
+        out = self.run_summary()
+        self.assertIn("| m | skill | 1 | 1/1 | 10.0 | 0 | 100 |", out)
+
+    def test_boolean_criteria_and_tokens_rejected(self):
+        # Regression 2026-11-24 (A7, watched red): `isinstance(True, (int, float))`
+        # is True in Python, so JSON booleans silently averaged as 1.0 / 0.
+        self.make_run("m", "baseline", "01-landing-page", 1,
+                      result={"criteria_passed": True, "follow_up_prompts_needed": 0,
+                              "tokens_used": 100, "notes": "t"},
+                      sentinel={"exit": "completed"})
+        self.make_run("m", "skill", "01-landing-page", 1,
+                      result={"criteria_passed": 10, "follow_up_prompts_needed": 0,
+                              "tokens_used": False, "notes": "t"},
+                      sentinel={"exit": "completed"})
+        out = self.run_summary()
+        self.assertNotIn("| m | baseline |", out)
+        self.assertIn("criteria_passed is True", out)
+        self.assertIn("| m | skill | 1 | 1/1 | 10.0 | 0 | n/a |", out)
+        self.assertIn("tokens_used is False", out)
+
 
 class TestMarkComplete(SummaryFixture):
     def test_marks_a_scored_run(self):
@@ -211,6 +248,23 @@ class TestInit(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             run_benchmark.init("m", "skill", 2, tmp.name)
         self.assertEqual(json.loads((d / "RESULT.json").read_text())["criteria_passed"], 9)
+
+
+class TestRunSubcommand(unittest.TestCase):
+    def test_run_writes_into_alternate_runs_dir(self):
+        # Regression 2026-11-24 (A7, watched red): `run` hardcoded RUNS while
+        # init/complete/summary all accepted --runs-dir.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        buf = io.StringIO()
+        with patch.object(run_benchmark, "setting", return_value="fake-key"), \
+             patch.object(run_benchmark, "call_gateway",
+                          return_value=("hello world", {"prompt_tokens": 10, "completion_tokens": 5}, "req_1")), \
+             contextlib.redirect_stdout(buf):
+            rc = run_benchmark.run("m", "baseline", "01", runs_dir=tmp.name)
+        self.assertEqual(rc, 0)
+        out_file = Path(tmp.name) / "m" / "baseline" / "01-landing-page" / "run1" / "run-output.json"
+        self.assertTrue(out_file.is_file(), f"expected {out_file} to exist")
 
 
 if __name__ == "__main__":

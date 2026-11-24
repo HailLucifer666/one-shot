@@ -25,15 +25,32 @@ if [ ! -d "$SOURCE_DIR" ]; then
   exit 1
 fi
 
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -c1-12
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -c1-12
+  else
+    echo "unavailable"
+  fi
+}
+
 if [ "$VERIFY" = 1 ]; then
   if [ ! -d "$TARGET/one-shot" ]; then
     echo "not installed: $TARGET/one-shot does not exist"
     exit 1
   fi
   FAIL=0
-  # manifest derived from the source tree — never a hand-typed file list
-  FILES=$(find "$SOURCE_DIR" -type f | sed "s|^$SOURCE_DIR/||" | sort)
-  for rel in $FILES; do
+  SRC_COUNT=0
+  # manifest derived from the source tree — never a hand-typed file list;
+  # cd into $SOURCE_DIR so regex metacharacters in $SOURCE_DIR cannot corrupt
+  # path stripping, and read line-by-line so spaces in filenames stay intact.
+  TMP_LIST=$(mktemp)
+  trap 'rm -f "$TMP_LIST"' EXIT
+  (cd "$SOURCE_DIR" && find . -type f | sed 's|^\./||' | sort) > "$TMP_LIST"
+  while IFS= read -r rel; do
+    [ -z "$rel" ] && continue
+    SRC_COUNT=$((SRC_COUNT + 1))
     if [ ! -f "$TARGET/one-shot/$rel" ]; then
       echo "MISSING: one-shot/$rel"
       FAIL=1
@@ -41,9 +58,8 @@ if [ "$VERIFY" = 1 ]; then
       echo "DIFFERS: one-shot/$rel"
       FAIL=1
     fi
-  done
-  SRC_COUNT=$(printf '%s\n' "$FILES" | wc -l)
-  TGT_COUNT=$(find "$TARGET/one-shot" -type f | wc -l)
+  done < "$TMP_LIST"
+  TGT_COUNT=$(find "$TARGET/one-shot" -type f | wc -l | tr -d '[:space:]')
   if [ "$SRC_COUNT" -ne "$TGT_COUNT" ]; then
     echo "FILE COUNT: source has $SRC_COUNT, target has $TGT_COUNT"
     FAIL=1
@@ -58,7 +74,7 @@ if [ "$VERIFY" = 1 ]; then
   fi
   echo "VERIFY: OK - $SRC_COUNT files match, fingerprint present"
   echo "installed version: $(grep '^version:' "$TARGET/one-shot/SKILL.md" 2>/dev/null | head -1 | sed 's/^version:[[:space:]]*//' || echo unknown)"
-  echo "installed sha256 (SKILL.md): $(sha256sum "$TARGET/one-shot/SKILL.md" | cut -c1-12)"
+  echo "installed sha256 (SKILL.md): $(hash_file "$TARGET/one-shot/SKILL.md")"
   exit 0
 fi
 
@@ -67,5 +83,5 @@ rm -rf "$TARGET/one-shot"
 cp -R "$SOURCE_DIR" "$TARGET/one-shot"
 echo "Installed one-shot to $TARGET/one-shot"
 echo "installed version: $(grep '^version:' "$TARGET/one-shot/SKILL.md" 2>/dev/null | head -1 | sed 's/^version:[[:space:]]*//' || echo unknown)"
-echo "installed sha256 (SKILL.md): $(sha256sum "$TARGET/one-shot/SKILL.md" | cut -c1-12)"
+echo "installed sha256 (SKILL.md): $(hash_file "$TARGET/one-shot/SKILL.md")"
 sh "$0" --verify "$TARGET"

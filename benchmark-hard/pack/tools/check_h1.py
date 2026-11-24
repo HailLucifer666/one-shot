@@ -37,7 +37,8 @@ def main():
     allt = "\n".join(src.values())
     html = "\n".join(v for p, v in src.items() if p.suffix.lower() in (".html", ".htm"))
     css = "\n".join(v for p, v in src.items() if p.suffix.lower() == ".css") + "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", html, re.S | re.I))
-    vis = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S | re.I)
+    html_no_comments = re.sub(r"<!--.*?-->", " ", html, flags=re.S)
+    vis = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html_no_comments, flags=re.S | re.I)
     vis = norm(re.sub(r"<[^>]+>", " ", vis))
     n_all = norm(allt)
     res = []
@@ -58,7 +59,7 @@ def main():
     about = "ember & oak opened in 2019 in a former hardware store. we roast in small batches every tuesday. everything in the case is baked before sunrise."
     add(8, about in vis)
     add(9, "mailto:hello@emberandoak.example" in html.lower())
-    banned = [w for w in ("lorem ipsum", "revolutionary", "seamless", "unlock", "elevate", "award-winning") if w in n_all]
+    banned = [w for w in ("lorem ipsum", "revolutionary", "seamless", "unlock", "elevate", "award-winning") if w in vis]
     add(10, not banned, f"found {banned}" if banned else "")
     add(11, not EMOJI.search(re.sub(r"<[^>]+>", " ", html)))
     # 12: no remote images. Derived rule, not a service denylist: every img src/srcset and

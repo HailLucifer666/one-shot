@@ -14,7 +14,7 @@ RESTORED=""
 
 for PAIR in "$ZCODE_DIR" "$CLAUDE_DIR"; do
   DIR="$PAIR"
-  NAME=$(echo "$DIR" | sed 's|[/\\]|-|g; s|^-*||')
+  NAME=$(echo "$DIR" | sed 's|[:/\\]|-|g; s|^-*||')
   SRC="$STAGING/$NAME"
   if [ -d "$SRC" ]; then
     rm -rf "$DIR"
@@ -39,13 +39,15 @@ if [ "$LEFTOVERS" -ne 0 ]; then
   find "$STAGING" -maxdepth 1 -mindepth 1 >&2
 fi
 
-# Postcondition 2: if a restore happened and the repo is reachable, byte-verify.
+# Postcondition 2: if any install is present and the repo is reachable, byte-verify
+# (even when nothing was parked, so a stale or tampered install cannot pass silently).
 # install.sh --verify expects the PARENT skills dir (it checks $TARGET/one-shot).
-if [ -n "$RESTORED" ] && [ -f "$REPO_ROOT/install.sh" ]; then
+VERIFIED=""
+if [ -f "$REPO_ROOT/install.sh" ]; then
   for DIR in "$ZCODE_DIR" "$CLAUDE_DIR"; do
     if [ -d "$DIR" ]; then
       if bash "$REPO_ROOT/install.sh" --verify "$(dirname "$DIR")" >/dev/null 2>&1; then
-        RESTORED="$RESTORED  verified: $DIR byte-identical to repo\n"
+        VERIFIED="$VERIFIED  verified: $DIR byte-identical to repo\n"
       else
         echo "VERIFY FAILED: $DIR differs from the repo's one-shot/ — reinstall before skill arms." >&2
         FAIL=1
@@ -61,11 +63,11 @@ fi
 
 if [ -z "$RESTORED" ]; then
   if [ -d "$ZCODE_DIR" ] || [ -d "$CLAUDE_DIR" ]; then
-    echo -e "RESTORE: OK — nothing was parked, and the installs are already in place:\n$RESTORED"
+    echo -e "RESTORE: OK — nothing was parked, and the installs are already in place:\n$VERIFIED"
   else
     echo -e "RESTORE: OK — nothing was parked and no installs found at:\n  $ZCODE_DIR\n  $CLAUDE_DIR\n(install the skill before running a skill arm)"
   fi
 else
-  echo -e "RESTORE: OK — skill is back in the ZCode and Claude Code catalogs.\n$RESTORED"
+  echo -e "RESTORE: OK — skill is back in the ZCode and Claude Code catalogs.\n$RESTORED$VERIFIED"
 fi
 echo "Skill arms are now clean."

@@ -22,7 +22,7 @@ MOVED=""
 
 for DIR in "$ZCODE_DIR" "$CLAUDE_DIR"; do
   if [ -d "$DIR" ]; then
-    NAME=$(echo "$DIR" | sed 's|[/\\]|-|g; s|^-*||')
+    NAME=$(echo "$DIR" | sed 's|[:/\\]|-|g; s|^-*||')
     DEST="$STAGING/$NAME"
     rm -rf "$DEST"
     if mv "$DIR" "$DEST"; then

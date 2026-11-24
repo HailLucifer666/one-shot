@@ -68,8 +68,18 @@ def call_gateway(model, prompt, key):
     return choices[0].get("message", {}).get("content") or "", payload.get("usage") or {}, request_id
 
 
-def run(model, mode, spec_id):
+def _is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _is_zero_follow_ups(v):
+    return (v is not None and not isinstance(v, bool)
+            and not str(v).startswith(">") and float(str(v)) == 0)
+
+
+def run(model, mode, spec_id, runs_dir=None):
     """Run one spec through the gateway and write its run-output.json events."""
+    root = Path(runs_dir) if runs_dir else RUNS
     key = setting("RESPAN_API_KEY")
     if not key:
         print("RESPAN_API_KEY is not set, so nothing was sent. Export it, or add it to .env "
@@ -92,14 +102,14 @@ def run(model, mode, spec_id):
     event = {"type": "text", "timestamp": int(time.time() * 1000), "sessionID": f"ses_{uuid.uuid4().hex}",
              "part": {"type": "text", "model": model, "mode": mode, "spec": spec.stem, "text": text,
                       "usage": tokens, "gateway_request_id": request_id, "gateway_url": gateway_url()}}
-    out_dir = RUNS / model / mode / spec.stem
+    out_dir = root / model / mode / spec.stem
     n = 1
     while (out_dir / f"run{n}" / "run-output.json").exists():
         n += 1
     out = out_dir / f"run{n}" / "run-output.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(event) + "\n")
-    print(f"{out.relative_to(RUNS)}: {len(text.split())} words, "
+    print(f"{out.relative_to(root)}: {len(text.split())} words, "
           f"{tokens['input'] + tokens['output']} tokens, gateway request {request_id or 'unknown'}")
     return 0
 
@@ -164,14 +174,14 @@ def summary(runs_dir=None):
         if exit_state != "completed":
             skipped.append(f"{label}: sentinel exit is {exit_state!r}, not 'completed'")
             continue
-        if not isinstance(data["criteria_passed"], (int, float)):
+        if not _is_number(data["criteria_passed"]):
             skipped.append(f"{label}: criteria_passed is {data['criteria_passed']!r}, expected a number")
             continue
         fu = data.get("follow_up_prompts_needed")
-        if fu is not None and not re.fullmatch(r">?\d+(\.\d+)?", str(fu)):
+        if fu is not None and (isinstance(fu, bool) or not re.fullmatch(r">?\d+(\.\d+)?", str(fu))):
             skipped.append(f"{label}: follow_up_prompts_needed is {fu!r}, expected a number or '>X'")
             continue
-        if data.get("tokens_used") is not None and not isinstance(data["tokens_used"], (int, float)):
+        if data.get("tokens_used") is not None and not _is_number(data["tokens_used"]):
             # junk token display must not erase valid criteria data: count the row,
             # exclude the value from the token mean, and say so
             warned.append(f"{label}: tokens_used is {data['tokens_used']!r} - "
@@ -182,13 +192,13 @@ def summary(runs_dir=None):
     for (model, mode), runs in sorted(rows.items()):
         n = len(runs)
         perfect = sum(1 for r in runs if r["criteria_passed"] == CRITERIA_TOTAL
-                      and (r["follow_up_prompts_needed"] or 0) == 0)
+                      and _is_zero_follow_ups(r.get("follow_up_prompts_needed")))
         mean_c = statistics.mean(r["criteria_passed"] for r in runs)
         # ">X" lower bounds (SCORING.md) count as X; the median is footnoted when any entry is a lower bound
         fu_raw = [r["follow_up_prompts_needed"] for r in runs if r["follow_up_prompts_needed"] is not None]
         fu = [float(str(v).lstrip(">")) for v in fu_raw]
         censored = any(str(v).startswith(">") for v in fu_raw)
-        tok = [r["tokens_used"] for r in runs if isinstance(r.get("tokens_used"), (int, float))]
+        tok = [r["tokens_used"] for r in runs if _is_number(r.get("tokens_used"))]
         med = f"{statistics.median(fu):g}" + ("+" if censored else "") if fu else "n/a"
         print(f"| {model} | {mode} | {n} | {perfect}/{n} | {mean_c:.1f} | {med} | "
               f"{round(statistics.mean(tok)) if tok else 'n/a'} |")
@@ -215,6 +225,8 @@ if __name__ == "__main__":
     r.add_argument("--model", required=True)
     r.add_argument("--mode", choices=["baseline", "skill"], required=True)
     r.add_argument("--spec", required=True, help="spec number, e.g. 01")
+    r.add_argument("--runs-dir", default=None,
+                   help="alternate run tree - keeps a new battery clear of the vendored records")
     s = sub.add_parser("summary")
     s.add_argument("--runs-dir", default=None, help="alternate run tree (default benchmark/runs)")
     c = sub.add_parser("complete", help="write the run-complete.json sentinel for a scored run")
@@ -227,7 +239,7 @@ if __name__ == "__main__":
     if args.cmd == "init":
         init(args.model, args.mode, args.repeats, args.runs_dir)
     elif args.cmd == "run":
-        sys.exit(run(args.model, args.mode, args.spec))
+        sys.exit(run(args.model, args.mode, args.spec, args.runs_dir))
     elif args.cmd == "complete":
         path, err = mark_complete(args.model, args.mode, args.spec, args.run, args.runs_dir)
         if err:
