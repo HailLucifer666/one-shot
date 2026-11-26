@@ -593,7 +593,7 @@ class EndToEndTests(unittest.TestCase):
     def _run_scanner(self, repo=None):
         return subprocess.run(
             [sys.executable, "-I", self.scanner, "--repo", repo or self.repo],
-            capture_output=True, text=True)
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     def test_planted_secret_exits_1_and_reports_excerpt(self):
         self._commit_file("note.md",

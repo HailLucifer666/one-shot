@@ -110,7 +110,7 @@ export function visibleHtmlText(html) {
 
 function isInsideRoot(realRoot, targetPath) {
   const rel = path.relative(realRoot, targetPath);
-  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  return rel !== "" && rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel);
 }
 
 export function walkFiles(root, symlinkIssues = null) {
@@ -195,8 +195,8 @@ export function countTestDefinitions(root, allFiles = walkFiles(root)) {
       if (m) total += m.length;
     } else {
       const noStrings = stripJsStrings(stripped);
-      // Exclude .skip and .todo so disabled/stub tests cannot satisfy test-count-floor (V5)
-      const m = noStrings.match(/(?:^|[^\w$])(?:test|it)(?:\.only)?\s*\(/gm);
+      // Exclude .skip, .todo, and property method calls like /re/.test(x) (V5)
+      const m = noStrings.match(/(?:^|[^\w$.])(?:test|it)(?:\.only)?\s*\(/gm);
       if (m) total += m.length;
     }
   }
@@ -416,7 +416,7 @@ async function waitForServer(port, healthPath, child = null, timeoutMs = 10_000)
 }
 
 function killProcessTree(child) {
-  if (!child || child.killed || !child.pid) return;
+  if (!child || child.killed || child.exitCode !== null || !child.pid) return;
   try {
     if (process.platform === "win32") {
       spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
@@ -808,13 +808,24 @@ export async function runVerify(rawOpts) {
     });
   }
 
-  // 1. Deliverables exist on disk as regular files inside project root (V6)
+  // 1. Deliverables exist on disk as regular files inside project root (V6, realpath-safe)
   if (Array.isArray(contract?.deliverables) && contract.deliverables.length > 0) {
     const badDeliverables = [];
     const realRoot = fs.realpathSync(root);
     for (const rel of contract.deliverables) {
       const full = path.resolve(root, String(rel));
-      if (!isInsideRoot(realRoot, full) || !fs.existsSync(full) || !fs.statSync(full).isFile()) {
+      if (!fs.existsSync(full)) {
+        badDeliverables.push(String(rel));
+        continue;
+      }
+      let realFull;
+      try {
+        realFull = fs.realpathSync(full);
+      } catch {
+        badDeliverables.push(String(rel));
+        continue;
+      }
+      if (!isInsideRoot(realRoot, realFull) || !fs.statSync(realFull).isFile()) {
         badDeliverables.push(String(rel));
       }
     }

@@ -140,7 +140,7 @@ function installClaudeStopHook(homeDir) {
   const loaded = readClaudeSettings(settingsPath);
   if (!loaded.ok) return { ok: false, settingsPath, error: loaded.error };
   const settings = loaded.settings;
-  if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
+  if (!settings.hooks || typeof settings.hooks !== "object" || Array.isArray(settings.hooks)) settings.hooks = {};
   if (!Array.isArray(settings.hooks.Stop)) settings.hooks.Stop = [];
   const alreadyInstalled = hasClaudeStopHook(settings);
   if (!alreadyInstalled) {
@@ -324,24 +324,51 @@ function cmdInit(args) {
     }
     const hookBody = "#!/bin/sh\n# Installed by one-shot v" + VERSION + "\nnpx one-shot hook-check --dir .\n";
     fs.writeFileSync(hookPath, hookBody, { encoding: "utf-8", mode: 0o755 });
+    if (process.platform !== "win32") {
+      try { fs.chmodSync(hookPath, 0o755); } catch { /* ignore */ }
+    }
     console.log(`Installed pre-commit hook at ${hookPath}`);
   }
   return 0;
 }
 
-function readStdinJson() {
-  if (process.stdin.isTTY) return null;
-  try {
-    const raw = fs.readFileSync(0, "utf-8").trim();
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
+function readStdinJson(idleTimeoutMs = 250) {
+  if (process.stdin.isTTY) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const chunks = [];
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      process.stdin.removeListener("data", onData);
+      process.stdin.removeListener("end", onEnd);
+      process.stdin.removeListener("error", onEnd);
+      process.stdin.pause();
+      const raw = Buffer.concat(chunks).toString("utf-8").trim();
+      if (!raw) { resolve(null); return; }
+      try {
+        const parsed = JSON.parse(raw);
+        resolve(parsed && typeof parsed === "object" ? parsed : null);
+      } catch {
+        resolve(null);
+      }
+    };
+    const onData = (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      clearTimeout(timer);
+      timer = setTimeout(finish, idleTimeoutMs);
+    };
+    const onEnd = () => finish();
+    let timer = setTimeout(finish, idleTimeoutMs);
+    process.stdin.on("data", onData);
+    process.stdin.on("end", onEnd);
+    process.stdin.on("error", onEnd);
+    process.stdin.resume();
+  });
 }
 
-function cmdHookCheck(args) {
+async function cmdHookCheck(args) {
   let dir = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -354,7 +381,7 @@ function cmdHookCheck(args) {
     console.error(`ERROR: unknown hook-check option: ${a}`);
     return 2;
   }
-  const payload = readStdinJson();
+  const payload = await readStdinJson();
   if (payload?.stop_hook_active === true) {
     console.error("one-shot: stop_hook_active is true — allowing stop to avoid an infinite loop.");
     return 0;
@@ -379,7 +406,7 @@ function cmdVerify(args) {
   return res.status ?? 2;
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
     console.log(usage());
@@ -392,7 +419,7 @@ function main() {
   const [cmd, ...rest] = argv;
   if (cmd === "install") process.exit(cmdInstall(rest));
   if (cmd === "verify") process.exit(cmdVerify(rest));
-  if (cmd === "hook-check") process.exit(cmdHookCheck(rest));
+  if (cmd === "hook-check") process.exit(await cmdHookCheck(rest));
   if (cmd === "init") process.exit(cmdInit(rest));
   console.error(`ERROR: unknown command '${cmd}'\n`);
   console.error(usage());

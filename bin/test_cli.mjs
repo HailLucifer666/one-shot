@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -238,5 +238,27 @@ test("V9 & V15: init --git-hook preserves custom hook without --force and instal
   } finally {
     fs.rmSync(proj, { recursive: true, force: true });
     fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test("REV: hook-check does not hang when spawned with an open stdin pipe", async () => {
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-open-pipe-"));
+  try {
+    const code = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [CLI, "hook-check", "--dir", proj], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error("hook-check hung on open stdin pipe"));
+      }, 4000);
+      child.on("exit", (c) => {
+        clearTimeout(killTimer);
+        resolve(c);
+      });
+    });
+    assert.equal(code, 0);
+  } finally {
+    fs.rmSync(proj, { recursive: true, force: true });
   }
 });

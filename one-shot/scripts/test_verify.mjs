@@ -673,3 +673,20 @@ test("V8: env-gitignore accepts **/.env and catches nested unignored backend/.en
     fs.rmSync(badNested, { recursive: true, force: true });
   }
 });
+
+test("REV: ..foo deliverable is allowed inside root and /re/.test(x) is not counted as a test definition", async () => {
+  const mod = await import("./verify.mjs");
+  const dir = makeTmpProject({
+    "..foo": "valid filename starting with two dots\n",
+    "tests/regex.test.js": 'const ok = /abc/.test("abc");\ntest("real", () => { if (!ok) throw new Error(); });\n',
+    "one-shot-work/contract.json": JSON.stringify({ deliverables: ["..foo"], criteria: [] }),
+  });
+  try {
+    assert.equal(mod.countTestDefinitions(dir), 1, "/re/.test(x) must not be counted as a test");
+    const r = runCli(["--dir", dir, "--skip-browser"]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /PASS\s+deliverables/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
