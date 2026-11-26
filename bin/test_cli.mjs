@@ -192,3 +192,51 @@ test("Slice 2 & 5: init --brownfield snapshots baseline.json and --git-hook inst
     fs.rmSync(proj, { recursive: true, force: true });
   }
 });
+
+test("V3: hook-check exits 0 when stdin reports stop_hook_active: true (prevents infinite Stop-Hook loop)", () => {
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-stop-active-"));
+  try {
+    fs.mkdirSync(path.join(proj, "one-shot-work"), { recursive: true });
+    fs.writeFileSync(path.join(proj, "one-shot-work", "contract.json"), JSON.stringify({ deliverables: ["missing.js"] }));
+    const res = spawnSync(process.execPath, [CLI, "hook-check", "--dir", proj], {
+      input: JSON.stringify({ stop_hook_active: true }),
+      encoding: "utf-8",
+      timeout: 30_000,
+    });
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stderr, /stop_hook_active/i);
+  } finally {
+    fs.rmSync(proj, { recursive: true, force: true });
+  }
+});
+
+test("V9 & V15: init --git-hook preserves custom hook without --force and install --with-hook handles corrupt settings cleanly", () => {
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-githook-"));
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-corrupt-home-"));
+  try {
+    fs.mkdirSync(path.join(proj, ".git", "hooks"), { recursive: true });
+    const hookFile = path.join(proj, ".git", "hooks", "pre-commit");
+    fs.writeFileSync(hookFile, "#!/bin/sh\necho CUSTOM_HOOK\n", "utf-8");
+
+    // Without --force: must NOT clobber custom hook
+    const refused = runCli(["init", "--dir", proj, "--git-hook"]);
+    assert.equal(refused.status, 1, refused.stdout + refused.stderr);
+    assert.match(fs.readFileSync(hookFile, "utf-8"), /CUSTOM_HOOK/);
+
+    // With --force: overwrites cleanly
+    const forced = runCli(["init", "--dir", proj, "--git-hook", "--force"]);
+    assert.equal(forced.status, 0, forced.stdout + forced.stderr);
+    assert.match(fs.readFileSync(hookFile, "utf-8"), /hook-check/);
+
+    // Corrupt settings.json: returns clean error (exit 2), no raw SyntaxError stack
+    fs.mkdirSync(path.join(fakeHome, ".claude"), { recursive: true });
+    fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), "{ invalid json", "utf-8");
+    const badSettings = runCli(["install", "--home", fakeHome, "--with-hook"]);
+    assert.equal(badSettings.status, 2, badSettings.stdout + badSettings.stderr);
+    assert.match(badSettings.stderr, /ERROR:.*settings\.json/i);
+    assert.doesNotMatch(badSettings.stderr, /at JSON\.parse/);
+  } finally {
+    fs.rmSync(proj, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});

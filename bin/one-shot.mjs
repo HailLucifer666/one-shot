@@ -10,7 +10,6 @@
  */
 
 import { spawnSync } from "node:child_process";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,7 +22,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const SKILL_SRC = path.join(REPO_ROOT, "one-shot");
 const VERIFY_SCRIPT = path.join(SKILL_SRC, "scripts", "verify.mjs");
 const CONTRACT_TEMPLATE = path.join(SKILL_SRC, "templates", "contract.json");
-const VERSION = "0.3.0";
+const VERSION = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")).version;
 
 const HARNESS_DIRS = [
   { name: "Claude Code", marker: ".claude", skillsRel: path.join(".claude", "skills") },
@@ -45,11 +44,6 @@ function walkRelativeFiles(rootDir) {
   }
   visit(rootDir);
   return out.sort();
-}
-
-function sha256Prefix(filePath) {
-  const h = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-  return h.slice(0, 12);
 }
 
 export function detectTargets(homeDir) {
@@ -103,7 +97,7 @@ export function verifyInstall(targetSkillsDir, sourceDir = SKILL_SRC) {
     ok: errors.length === 0,
     errors,
     fileCount: srcFiles.length,
-    sha: fs.existsSync(skillMd) ? sha256Prefix(skillMd) : null,
+    sha: fs.existsSync(skillMd) ? sha256File(skillMd).slice(0, 12) : null,
   };
 }
 
@@ -118,27 +112,46 @@ function copyDir(src, dst) {
   }
 }
 
+const STOP_HOOK_CMD = "npx one-shot hook-check";
+
+function readClaudeSettings(settingsPath) {
+  if (!fs.existsSync(settingsPath)) return { ok: true, settings: {} };
+  try {
+    const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, error: `${settingsPath} must contain a JSON object` };
+    }
+    return { ok: true, settings: parsed };
+  } catch (err) {
+    return { ok: false, error: `invalid JSON in ${settingsPath}: ${err.message}` };
+  }
+}
+
+function hasClaudeStopHook(settings) {
+  return Array.isArray(settings?.hooks?.Stop) && settings.hooks.Stop.some((entry) =>
+    Array.isArray(entry?.hooks) && entry.hooks.some((h) => h?.command === STOP_HOOK_CMD)
+  );
+}
+
 function installClaudeStopHook(homeDir) {
   const claudeDir = path.join(homeDir, ".claude");
   fs.mkdirSync(claudeDir, { recursive: true });
   const settingsPath = path.join(claudeDir, "settings.json");
-  let settings = {};
-  if (fs.existsSync(settingsPath)) {
-    settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-  }
+  const loaded = readClaudeSettings(settingsPath);
+  if (!loaded.ok) return { ok: false, settingsPath, error: loaded.error };
+  const settings = loaded.settings;
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
   if (!Array.isArray(settings.hooks.Stop)) settings.hooks.Stop = [];
-  const hookCmd = "npx one-shot hook-check";
-  const alreadyInstalled = settings.hooks.Stop.some((entry) =>
-    Array.isArray(entry?.hooks) && entry.hooks.some((h) => h?.command === hookCmd)
-  );
+  const alreadyInstalled = hasClaudeStopHook(settings);
   if (!alreadyInstalled) {
     settings.hooks.Stop.push({
-      hooks: [{ type: "command", command: hookCmd }],
+      hooks: [{ type: "command", command: STOP_HOOK_CMD }],
     });
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+    const tmpPath = `${settingsPath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+    fs.renameSync(tmpPath, settingsPath);
   }
-  return { settingsPath, alreadyInstalled };
+  return { ok: true, settingsPath, alreadyInstalled };
 }
 
 function usage() {
@@ -209,9 +222,28 @@ function cmdInstall(args) {
       for (const e of check.errors) console.error(`  - ${e}`);
     }
   }
-  if (withHook && !verifyOnly) {
-    const { settingsPath, alreadyInstalled } = installClaudeStopHook(homeDir);
-    console.log(`STOP-HOOK: ${alreadyInstalled ? "already present" : "registered"} in ${settingsPath}`);
+  if (withHook) {
+    if (verifyOnly) {
+      const settingsPath = path.join(homeDir, ".claude", "settings.json");
+      const loaded = readClaudeSettings(settingsPath);
+      if (!loaded.ok) {
+        console.error(`ERROR: ${loaded.error}`);
+        return 2;
+      }
+      if (hasClaudeStopHook(loaded.settings)) {
+        console.log(`STOP-HOOK: VERIFY OK in ${settingsPath}`);
+      } else {
+        allOk = false;
+        console.error(`STOP-HOOK: MISSING in ${settingsPath}`);
+      }
+    } else {
+      const res = installClaudeStopHook(homeDir);
+      if (!res.ok) {
+        console.error(`ERROR: ${res.error}`);
+        return 2;
+      }
+      console.log(`STOP-HOOK: ${res.alreadyInstalled ? "already present" : "registered"} in ${res.settingsPath}`);
+    }
   }
   return allOk ? 0 : 1;
 }
@@ -264,13 +296,32 @@ function cmdInit(args) {
   }
 
   if (gitHook) {
-    const hooksDir = path.join(root, ".git", "hooks");
-    if (!fs.existsSync(path.join(root, ".git"))) {
+    const dotGit = path.join(root, ".git");
+    if (!fs.existsSync(dotGit)) {
       console.error(`ERROR: no .git directory found under ${root}`);
       return 1;
     }
+    let hooksDir = null;
+    if (fs.statSync(dotGit).isDirectory()) {
+      hooksDir = path.join(dotGit, "hooks");
+    } else {
+      const gp = spawnSync("git", ["-C", root, "rev-parse", "--git-path", "hooks"], { encoding: "utf-8" });
+      if (gp.status === 0 && gp.stdout.trim()) {
+        hooksDir = path.resolve(root, gp.stdout.trim());
+      } else {
+        console.error(`ERROR: unable to resolve git hooks directory for worktree/submodule at ${root}`);
+        return 1;
+      }
+    }
     fs.mkdirSync(hooksDir, { recursive: true });
     const hookPath = path.join(hooksDir, "pre-commit");
+    if (fs.existsSync(hookPath) && !force) {
+      const existing = fs.readFileSync(hookPath, "utf-8");
+      if (!existing.includes("# Installed by one-shot")) {
+        console.error(`ERROR: existing custom pre-commit hook at ${hookPath} (pass --force to overwrite)`);
+        return 1;
+      }
+    }
     const hookBody = "#!/bin/sh\n# Installed by one-shot v" + VERSION + "\nnpx one-shot hook-check --dir .\n";
     fs.writeFileSync(hookPath, hookBody, { encoding: "utf-8", mode: 0o755 });
     console.log(`Installed pre-commit hook at ${hookPath}`);
@@ -278,8 +329,20 @@ function cmdInit(args) {
   return 0;
 }
 
+function readStdinJson() {
+  if (process.stdin.isTTY) return null;
+  try {
+    const raw = fs.readFileSync(0, "utf-8").trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function cmdHookCheck(args) {
-  let dir = ".";
+  let dir = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "-h" || a === "--help") { console.log(usage()); return 0; }
@@ -291,7 +354,13 @@ function cmdHookCheck(args) {
     console.error(`ERROR: unknown hook-check option: ${a}`);
     return 2;
   }
-  const root = path.resolve(dir);
+  const payload = readStdinJson();
+  if (payload?.stop_hook_active === true) {
+    console.error("one-shot: stop_hook_active is true — allowing stop to avoid an infinite loop.");
+    return 0;
+  }
+  const targetDir = dir ?? (typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : ".");
+  const root = path.resolve(targetDir);
   const contractPath = path.join(root, "one-shot-work", "contract.json");
   if (!fs.existsSync(contractPath)) {
     return 0; // Not a one-shot contracted workspace — zero friction
@@ -330,10 +399,14 @@ function main() {
   process.exit(2);
 }
 
-const isMain = Boolean(
-  process.argv[1] &&
-  fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url))
-);
-if (isMain) {
+function isMainModule(metaUrl) {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(metaUrl));
+  } catch {
+    return false;
+  }
+}
+if (isMainModule(import.meta.url)) {
   main();
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for scripts/validate_skill.py (v0.2.0). Standard library only.
+"""Regression tests for scripts/validate_skill.py (v0.3.0). Standard library only.
 
   python -I scripts/test_validate_skill.py
 
@@ -95,6 +95,13 @@ class ValidateSkill(unittest.TestCase):
         code, out = self.run_validator()
         self.assertEqual(code, 1)
         self.assertIn("--help", out)
+
+    def test_deprecated_artifact_reference_fails(self):
+        intake = self.skill / "intake.md"
+        intake.write_text(intake.read_text(encoding="utf-8") + "\nLog to ASSUMPTIONS.md\n", encoding="utf-8")
+        code, out = self.run_validator()
+        self.assertEqual(code, 1)
+        self.assertIn("ASSUMPTIONS.md", out)
 
 
 if __name__ == "__main__":

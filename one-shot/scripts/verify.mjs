@@ -37,9 +37,11 @@ const SECRET_RE = new RegExp(
   [
     "-----BEGIN [A-Z ]*PRIVATE KEY-----",
     "\\bAKIA[0-9A-Z]{16}\\b",
-    "\\bsk-[A-Za-z0-9]{20,}\\b",
-    "\\bghp_[A-Za-z0-9]{36}\\b",
+    "\\bsk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{20,}\\b",
+    "\\bsk_live_[A-Za-z0-9]{16,}\\b",
+    "\\bgh[po]_[A-Za-z0-9]{36}\\b",
     "\\bgithub_pat_[A-Za-z0-9_]{30,}\\b",
+    "\\bglpat-[A-Za-z0-9_-]{20,}\\b",
     "\\bAIza[0-9A-Za-z_\\-]{35}\\b",
     "\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b",
   ].join("|")
@@ -58,7 +60,9 @@ const SQL_ERROR_RE = /(?:SQLITE_ERROR|syntax error at or near|PG::SyntaxError|my
 const JS_TOKEN_RE = /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`|(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g;
 const CSS_TOKEN_RE = /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|(\/\*[\s\S]*?\*\/)/g;
 const SQL_TOKEN_RE = /'(?:''|\\.|[^'])*'|"(?:""|\\.|[^"])*"|(\/\*[\s\S]*?\*\/|--[^\n]*)/g;
-const HASH_COMMENT_EXTS = new Set([".py", ".yaml", ".yml", ".ini", ".cfg", ".toml", ".sh", ".env"]);
+const HASH_TOKEN_RE = /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|(#[^\n]*)/g;
+const HASH_COMMENT_EXTS = new Set([".py", ".yaml", ".yml", ".ini", ".cfg", ".toml", ".sh"]);
+const MAX_SCAN_FILE_BYTES = 5 * 1024 * 1024;
 
 export function stripComments(text, ext) {
   if (ext === ".html" || ext === ".htm" || ext === ".vue" || ext === ".svelte") {
@@ -78,7 +82,7 @@ export function stripComments(text, ext) {
     return text.replace(SQL_TOKEN_RE, (m, comment) => (comment ? " " : m));
   }
   if (HASH_COMMENT_EXTS.has(ext)) {
-    return text.replace(/#[^\n]*/g, " ");
+    return text.replace(HASH_TOKEN_RE, (m, comment) => (comment ? " " : m));
   }
   return text.replace(JS_TOKEN_RE, (m, comment) => (comment ? " " : m));
 }
@@ -88,8 +92,8 @@ export function gitignoreIgnoresEnv(text) {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
-    if (/^\/?\.env\*?$/.test(line)) ignored = true;
-    else if (/^!\/?\.env\*?$/.test(line)) ignored = false;
+    if (/^(?:\*\*\/)?\/?\.env(?:\.\*)?\*?$/.test(line)) ignored = true;
+    else if (/^!(?:\*\*\/)?\/?\.env(?:\.\*)?\*?$/.test(line)) ignored = false;
   }
   return ignored;
 }
@@ -104,8 +108,19 @@ export function visibleHtmlText(html) {
     .toLowerCase();
 }
 
-export function walkFiles(root) {
+function isInsideRoot(realRoot, targetPath) {
+  const rel = path.relative(realRoot, targetPath);
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+export function walkFiles(root, symlinkIssues = null) {
   const results = [];
+  let realRoot;
+  try {
+    realRoot = fs.realpathSync(root);
+  } catch {
+    realRoot = path.resolve(root);
+  }
   function visit(dir) {
     let entries;
     try {
@@ -114,10 +129,23 @@ export function walkFiles(root) {
       return;
     }
     for (const entry of entries) {
+      const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) visit(path.join(dir, entry.name));
+        if (!SKIP_DIRS.has(entry.name)) visit(full);
       } else if (entry.isFile()) {
-        results.push(path.join(dir, entry.name));
+        results.push(full);
+      } else if (entry.isSymbolicLink()) {
+        try {
+          const resolved = fs.realpathSync(full);
+          if (!isInsideRoot(realRoot, resolved)) {
+            if (symlinkIssues) symlinkIssues.push(`escaping symlink: ${path.relative(root, full).replace(/\\/g, "/")}`);
+            continue;
+          }
+          const st = fs.statSync(resolved);
+          if (st.isFile()) results.push(full);
+        } catch {
+          if (symlinkIssues) symlinkIssues.push(`dangling symlink: ${path.relative(root, full).replace(/\\/g, "/")}`);
+        }
       }
     }
   }
@@ -129,16 +157,29 @@ export function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-export function computeTreeHash(root) {
+export function computeTreeHash(root, { contractPath = null } = {}) {
   const files = walkFiles(root);
-  const contractFile = path.join(root, "one-shot-work", "contract.json");
-  const all = fs.existsSync(contractFile) ? [...files, contractFile] : files;
+  const extras = [];
+  const defaultContract = path.join(root, "one-shot-work", "contract.json");
+  const resolvedContract = contractPath ? path.resolve(contractPath) : defaultContract;
+  if (fs.existsSync(resolvedContract) && fs.statSync(resolvedContract).isFile()) {
+    extras.push(resolvedContract);
+  }
+  const baselineFile = path.join(root, "one-shot-work", "baseline.json");
+  if (fs.existsSync(baselineFile) && fs.statSync(baselineFile).isFile()) {
+    extras.push(baselineFile);
+  }
+  const all = [...files, ...extras];
   const hash = crypto.createHash("sha256");
   for (const full of all) {
     const rel = path.relative(root, full).replace(/\\/g, "/");
     hash.update(rel + "\0" + sha256File(full) + "\n");
   }
   return { treeHash: hash.digest("hex"), fileCount: files.length };
+}
+
+function stripJsStrings(text) {
+  return text.replace(/"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`/g, '""');
 }
 
 export function countTestDefinitions(root, allFiles = walkFiles(root)) {
@@ -153,14 +194,16 @@ export function countTestDefinitions(root, allFiles = walkFiles(root)) {
       const m = stripped.match(/^\s*(?:async\s+)?def\s+test_\w+\s*\(/gm);
       if (m) total += m.length;
     } else {
-      const m = stripped.match(/(?:^|[^\w$])(?:test|it)(?:\.(?:only|skip|todo))?\s*\(/gm);
+      const noStrings = stripJsStrings(stripped);
+      // Exclude .skip and .todo so disabled/stub tests cannot satisfy test-count-floor (V5)
+      const m = noStrings.match(/(?:^|[^\w$])(?:test|it)(?:\.only)?\s*\(/gm);
       if (m) total += m.length;
     }
   }
   return total;
 }
 
-export function checkReceipt(root, outPath) {
+export function checkReceipt(root, outPath, { contractPath = null } = {}) {
   const receiptPath = outPath ? path.resolve(outPath) : path.join(root, "one-shot-work", "GATE-RECEIPT.json");
   if (!fs.existsSync(receiptPath)) {
     return { ok: false, code: "MISSING_RECEIPT", detail: `receipt not found at ${receiptPath}` };
@@ -171,13 +214,16 @@ export function checkReceipt(root, outPath) {
   } catch (err) {
     return { ok: false, code: "INVALID_RECEIPT", detail: `unreadable receipt: ${err.message}` };
   }
+  if (!receipt || typeof receipt !== "object") {
+    return { ok: false, code: "INVALID_RECEIPT", detail: "receipt JSON is not an object" };
+  }
   if (receipt.status !== "PASS") {
     const failing = Array.isArray(receipt.checks)
       ? receipt.checks.filter((c) => c.status === "FAIL").map((c) => c.id).join(", ")
       : "unknown";
     return { ok: false, code: "GATE_BLOCKED", detail: `receipt status is ${receipt.status} (failing: ${failing})` };
   }
-  const { treeHash } = computeTreeHash(root);
+  const { treeHash } = computeTreeHash(root, { contractPath });
   if (!receipt.treeHash || receipt.treeHash !== treeHash) {
     return {
       ok: false,
@@ -185,19 +231,49 @@ export function checkReceipt(root, outPath) {
       detail: `treeHash mismatch (receipt=${String(receipt.treeHash || "missing").slice(0, 12)}, live=${treeHash.slice(0, 12)}) — re-run verify.mjs`,
     };
   }
+  if (!Array.isArray(receipt.checks) || receipt.checks.length === 0) {
+    return { ok: false, code: "INVALID_RECEIPT", detail: "receipt is missing a non-empty checks array" };
+  }
+  const validStatuses = new Set(["PASS", "FAIL", "SKIPPED"]);
+  for (const c of receipt.checks) {
+    if (!c || typeof c.id !== "string" || !validStatuses.has(c.status)) {
+      return { ok: false, code: "INVALID_RECEIPT", detail: "receipt contains malformed check entry" };
+    }
+  }
+  const failingChecks = receipt.checks.filter((c) => c.status === "FAIL");
+  if (failingChecks.length > 0 || (receipt.summary && receipt.summary.fail !== 0)) {
+    const failing = failingChecks.map((c) => c.id).join(", ") || "unknown";
+    return { ok: false, code: "GATE_BLOCKED", detail: `receipt contains failing check(s): ${failing}` };
+  }
   return { ok: true, code: "OK", detail: `fresh PASS receipt verified (treeHash=${treeHash.slice(0, 12)})` };
 }
 
 function parseRgb(str) {
-  const m = String(str || "").match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  const m = String(str || "").match(
+    /rgba?\(\s*(\d+(?:\.\d+)?)\s*[,\s]\s*(\d+(?:\.\d+)?)\s*[,\s]\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*(\d*(?:\.\d+)?)(%)?)?\s*\)/i
+  );
   if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
+  let a = 1;
+  if (m[4] !== undefined) {
+    a = Number(m[4]);
+    if (m[5] === "%") a /= 100;
+    a = Math.max(0, Math.min(1, a));
+  }
+  return [Number(m[1]), Number(m[2]), Number(m[3]), a];
+}
+
+function compositeOver([fr, fg, fb, fa], [br, bg, bb]) {
+  return [
+    fr * fa + br * (1 - fa),
+    fg * fa + bg * (1 - fa),
+    fb * fa + bb * (1 - fa),
+  ];
 }
 
 function relativeLuminance([r, g, b]) {
   const f = (v) => {
     const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   };
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 }
@@ -206,8 +282,10 @@ export function contrastRatio(fgStr, bgStr) {
   const fg = parseRgb(fgStr);
   const bg = parseRgb(bgStr);
   if (!fg || !bg) return null;
-  const l1 = relativeLuminance(fg);
-  const l2 = relativeLuminance(bg);
+  const solidBg = bg[3] < 1 ? compositeOver(bg, [255, 255, 255]) : [bg[0], bg[1], bg[2]];
+  const effectiveFg = fg[3] < 1 ? compositeOver(fg, solidBg) : [fg[0], fg[1], fg[2]];
+  const l1 = relativeLuminance(effectiveFg);
+  const l2 = relativeLuminance(solidBg);
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
@@ -236,8 +314,9 @@ export function auditDomElements({ textNodes = [], controls = [], images = [] } 
   for (const img of images) {
     if (img.alt === null || img.alt === undefined) {
       assetFails.push(`missing alt on ${img.src || "<img>"}`);
-    } else if (img.complete && img.naturalWidth === 0) {
-      assetFails.push(`broken image ${img.src || "<img>"}`);
+    }
+    if (!img.complete || img.naturalWidth === 0) {
+      assetFails.push(`broken/unloaded image ${img.src || "<img>"}`);
     }
   }
 
@@ -318,10 +397,13 @@ function httpRequest(port, method, urlPath, body = null, headers = {}) {
   });
 }
 
-async function waitForServer(port, healthPath, timeoutMs = 10_000) {
+async function waitForServer(port, healthPath, child = null, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
   let lastErr = "no response";
   while (Date.now() < deadline) {
+    if (child && child.exitCode !== null) {
+      throw new Error(`server exited immediately with code ${child.exitCode} before becoming ready`);
+    }
     try {
       const res = await httpRequest(port, "GET", healthPath);
       return res;
@@ -339,7 +421,11 @@ function killProcessTree(child) {
     if (process.platform === "win32") {
       spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
     } else {
-      child.kill("SIGTERM");
+      try {
+        process.kill(-child.pid, "SIGTERM");
+      } catch {
+        child.kill("SIGTERM");
+      }
     }
   } catch {
     try { child.kill(); } catch { /* ignore */ }
@@ -352,39 +438,51 @@ async function runBrowserCheck(pw, targetUrl, checks) {
     browser = await pw.chromium.launch({ headless: true });
     const page = await browser.newPage();
     const consoleErrors = [];
+    const networkErrors = [];
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(err.message));
+    page.on("response", (res) => {
+      if (res.status() >= 400) networkErrors.push(`${res.status()} ${res.url()}`);
+    });
+    page.on("requestfailed", (req) => {
+      networkErrors.push(`FAILED ${req.url()} (${req.failure()?.errorText || "network error"})`);
+    });
 
-    const overflows = [];
-    for (const width of [360, 768, 1280]) {
-      await page.setViewportSize({ width, height: 800 });
-      await page.goto(targetUrl, { waitUntil: "load", timeout: 15_000 });
-      const hasOverflow = await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth
-      );
-      if (hasOverflow) overflows.push(`${width}px`);
-    }
-
-    const domSnapshot = await page.evaluate(() => {
+    const snapshotDom = () => page.evaluate(() => {
+      function parseBg(str) {
+        const m = String(str || "").match(/rgba?\(\s*(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)(?:[,/\s]+(\d*(?:\.\d+)?))?/i);
+        if (!m) return null;
+        return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] !== undefined ? Number(m[4]) : 1];
+      }
       function effectiveBg(el) {
+        const layers = [];
         let cur = el;
         while (cur && cur.nodeType === 1) {
-          const bg = getComputedStyle(cur).backgroundColor;
-          if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
+          const parsed = parseBg(getComputedStyle(cur).backgroundColor);
+          if (parsed && parsed[3] > 0) {
+            layers.push(parsed);
+            if (parsed[3] >= 1) break;
+          }
           cur = cur.parentElement;
         }
-        return "rgb(255, 255, 255)";
+        let acc = [255, 255, 255];
+        for (let i = layers.length - 1; i >= 0; i--) {
+          const [r, g, b, a] = layers[i];
+          acc = [r * a + acc[0] * (1 - a), g * a + acc[1] * (1 - a), b * a + acc[2] * (1 - a)];
+        }
+        return `rgb(${Math.round(acc[0])}, ${Math.round(acc[1])}, ${Math.round(acc[2])})`;
       }
       const textNodes = [];
       for (const el of Array.from(document.querySelectorAll("h1,h2,h3,p,a,button,label,li,span")).slice(0, 80)) {
         const txt = (el.textContent || "").trim();
         const r = el.getBoundingClientRect();
-        if (!txt || r.width === 0 || r.height === 0) continue;
         const st = getComputedStyle(el);
+        if (!txt || r.width === 0 || r.height === 0 || st.visibility === "hidden" || Number(st.opacity) === 0) continue;
+        const cls = typeof el.className === "string" ? el.className.trim().split(/\s+/)[0] : "";
         textNodes.push({
-          selector: el.tagName.toLowerCase() + (el.className ? "." + String(el.className).trim().split(/\s+/)[0] : ""),
+          selector: el.tagName.toLowerCase() + (cls ? "." + cls : ""),
           fg: st.color,
           bg: effectiveBg(el),
           fontSizePx: parseFloat(st.fontSize) || 16,
@@ -410,6 +508,23 @@ async function runBrowserCheck(pw, targetUrl, checks) {
       return { textNodes, controls, images };
     });
 
+    const overflows = [];
+    const combinedSnapshot = { textNodes: [], controls: [], images: [] };
+    for (const width of [360, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(targetUrl, { waitUntil: "load", timeout: 15_000 });
+      const hasOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+      );
+      if (hasOverflow) overflows.push(`${width}px`);
+      if (width === 360 || width === 1280) {
+        const snap = await snapshotDom();
+        combinedSnapshot.textNodes.push(...snap.textNodes);
+        combinedSnapshot.controls.push(...snap.controls);
+        if (width === 1280) combinedSnapshot.images.push(...snap.images);
+      }
+    }
+
     checks.push({
       id: "browser-console",
       status: consoleErrors.length === 0 ? "PASS" : "FAIL",
@@ -418,13 +533,20 @@ async function runBrowserCheck(pw, targetUrl, checks) {
         : `${consoleErrors.length} error(s): ${consoleErrors.slice(0, 2).join("; ").slice(0, 200)}`,
     });
     checks.push({
+      id: "browser-network",
+      status: networkErrors.length === 0 ? "PASS" : "FAIL",
+      detail: networkErrors.length === 0
+        ? `0 failed asset/network requests on ${targetUrl}`
+        : `${networkErrors.length} failed request(s): ${networkErrors.slice(0, 2).join("; ").slice(0, 200)}`,
+    });
+    checks.push({
       id: "browser-overflow",
       status: overflows.length === 0 ? "PASS" : "FAIL",
       detail: overflows.length === 0
         ? "no horizontal overflow at 360/768/1280px"
         : `horizontal overflow detected at ${overflows.join(", ")}`,
     });
-    checks.push(...auditDomElements(domSnapshot));
+    checks.push(...auditDomElements(combinedSnapshot));
   } catch (err) {
     checks.push({
       id: "browser-check",
@@ -442,13 +564,14 @@ async function probeServer(opts, checks, pw = null) {
   const child = spawn(opts.startCmd, {
     cwd: opts.dir,
     shell: true,
+    detached: process.platform !== "win32",
     env: { ...process.env, PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stderrTail = "";
   child.stderr.on("data", (d) => { stderrTail = (stderrTail + d.toString("utf-8")).slice(-1000); });
   try {
-    const health = await waitForServer(port, healthPath);
+    const health = await waitForServer(port, healthPath, child);
     const okHealth = health.status >= 200 && health.status < 400 && !STACK_TRACE_RE.test(health.body);
     checks.push({
       id: "server-health",
@@ -481,7 +604,7 @@ async function probeServer(opts, checks, pw = null) {
       });
     }
 
-    // Slice 3: Hostile payload fuzzing (XSS, SQLi, prototype pollution)
+    // Slice 3: Hostile payload fuzzing (XSS reflection, SQL error leaks, 5xx crashes)
     if (Array.isArray(opts.fuzzPaths) && opts.fuzzPaths.length > 0) {
       const payloads = [
         { name: "xss", body: JSON.stringify({ title: '"><script>alert(1)</script>', q: '"><img src=x onerror=alert(1)>' }) },
@@ -493,11 +616,12 @@ async function probeServer(opts, checks, pw = null) {
         for (const payload of payloads) {
           const res = await httpRequest(port, "POST", p, payload.body, { "Content-Type": "application/json" });
           const ctype = String(res.headers["content-type"] || "").toLowerCase();
+          const htmlSniffable = ctype === "" || ctype.includes("text/html") || ctype.includes("application/xhtml+xml");
           if (res.status >= 500) {
             fuzzFails.push(`${p} [${payload.name}] -> HTTP ${res.status}`);
           } else if (STACK_TRACE_RE.test(res.body) || SQL_ERROR_RE.test(res.body)) {
             fuzzFails.push(`${p} [${payload.name}] leaked internal error`);
-          } else if (ctype.includes("text/html") && (res.body.includes("<script>alert(1)</script>") || res.body.includes("onerror=alert(1)"))) {
+          } else if (htmlSniffable && (res.body.includes("<script>alert(1)</script>") || res.body.includes("onerror=alert(1)"))) {
             fuzzFails.push(`${p} [${payload.name}] reflected unescaped HTML`);
           }
         }
@@ -506,41 +630,67 @@ async function probeServer(opts, checks, pw = null) {
         id: "server-fuzz",
         status: fuzzFails.length === 0 ? "PASS" : "FAIL",
         detail: fuzzFails.length === 0
-          ? `${opts.fuzzPaths.length} endpoint(s) survived XSS/SQLi/proto-pollution fuzzing`
+          ? `${opts.fuzzPaths.length} endpoint(s) passed XSS-reflection/SQL-error/5xx fuzzing`
           : `fuzz failure(s): ${fuzzFails.slice(0, 3).join("; ")}`,
       });
     }
 
-    // Slice 3: Declarative multi-user IDOR probe
+    // Slice 3: Declarative multi-user IDOR probe (with User-A control + GET/DELETE checks)
     if (opts.idorProbe && opts.idorProbe.createPath && opts.idorProbe.resourcePathTemplate) {
       const ip = opts.idorProbe;
-      const created = await httpRequest(
-        port,
-        ip.method || "POST",
-        ip.createPath,
-        JSON.stringify(ip.body || { title: "idor-probe" }),
-        { "Content-Type": "application/json", ...(ip.userAHeaders || {}) }
-      );
-      let createdId = null;
-      try {
-        const parsed = JSON.parse(created.body);
-        createdId = parsed?.id ?? parsed?.data?.id ?? parsed?.item?.id ?? null;
-      } catch { /* handled below */ }
-      if (created.status < 200 || created.status >= 300 || createdId === null) {
+      if (!String(ip.resourcePathTemplate).includes("{id}")) {
         checks.push({
           id: "server-idor",
           status: "FAIL",
-          detail: `User A create at ${ip.createPath} failed (HTTP ${created.status}, id=${createdId})`,
+          detail: `idorProbe.resourcePathTemplate must contain "{id}" (got ${ip.resourcePathTemplate})`,
         });
       } else {
-        const targetPath = ip.resourcePathTemplate.replace("{id}", encodeURIComponent(String(createdId)));
-        const cross = await httpRequest(port, "GET", targetPath, null, ip.userBHeaders || {});
-        const blocked = cross.status === 401 || cross.status === 403 || cross.status === 404;
-        checks.push({
-          id: "server-idor",
-          status: blocked ? "PASS" : "FAIL",
-          detail: `User B GET ${targetPath} -> HTTP ${cross.status} (expected 401/403/404)`,
-        });
+        const created = await httpRequest(
+          port,
+          ip.method || "POST",
+          ip.createPath,
+          JSON.stringify(ip.body || { title: "idor-probe" }),
+          { "Content-Type": "application/json", ...(ip.userAHeaders || {}) }
+        );
+        let createdId = null;
+        try {
+          const parsed = JSON.parse(created.body);
+          createdId = parsed?.id ?? parsed?.data?.id ?? parsed?.item?.id ?? null;
+        } catch { /* handled below */ }
+        if (created.status < 200 || created.status >= 300 || createdId === null) {
+          checks.push({
+            id: "server-idor",
+            status: "FAIL",
+            detail: `User A create at ${ip.createPath} failed (HTTP ${created.status}, id=${createdId})`,
+          });
+        } else {
+          const targetPath = ip.resourcePathTemplate.replace("{id}", encodeURIComponent(String(createdId)));
+          const ownerCheck = await httpRequest(port, "GET", targetPath, null, ip.userAHeaders || {});
+          if (ownerCheck.status < 200 || ownerCheck.status >= 300) {
+            checks.push({
+              id: "server-idor",
+              status: "FAIL",
+              detail: `User A control GET ${targetPath} failed (HTTP ${ownerCheck.status}, expected 2xx)`,
+            });
+          } else {
+            const methods = Array.isArray(ip.probeMethods) && ip.probeMethods.length > 0 ? ip.probeMethods : ["GET", "DELETE"];
+            const idorFails = [];
+            for (const m of methods) {
+              const cross = await httpRequest(port, m, targetPath, null, ip.userBHeaders || {});
+              const blocked = cross.status === 401 || cross.status === 403 || cross.status === 404 || cross.status === 405;
+              if (!blocked) {
+                idorFails.push(`User B ${m} ${targetPath} -> HTTP ${cross.status} (expected 401/403/404)`);
+              }
+            }
+            checks.push({
+              id: "server-idor",
+              status: idorFails.length === 0 ? "PASS" : "FAIL",
+              detail: idorFails.length === 0
+                ? `User A control 2xx verified; User B blocked on ${methods.join("/")} ${targetPath}`
+                : idorFails.join("; "),
+            });
+          }
+        }
       }
     }
 
@@ -648,29 +798,52 @@ export async function runVerify(rawOpts) {
     skipBrowser: Boolean(rawOpts.skipBrowser),
   };
 
-  const allFiles = walkFiles(root);
+  const symlinkIssues = [];
+  const allFiles = walkFiles(root, symlinkIssues);
+  if (symlinkIssues.length > 0) {
+    checks.push({
+      id: "symlink-safety",
+      status: "FAIL",
+      detail: symlinkIssues.slice(0, 3).join("; "),
+    });
+  }
 
-  // 1. Deliverables exist on disk
+  // 1. Deliverables exist on disk as regular files inside project root (V6)
   if (Array.isArray(contract?.deliverables) && contract.deliverables.length > 0) {
-    const missing = contract.deliverables.filter((rel) => !fs.existsSync(path.join(root, rel)));
+    const badDeliverables = [];
+    const realRoot = fs.realpathSync(root);
+    for (const rel of contract.deliverables) {
+      const full = path.resolve(root, String(rel));
+      if (!isInsideRoot(realRoot, full) || !fs.existsSync(full) || !fs.statSync(full).isFile()) {
+        badDeliverables.push(String(rel));
+      }
+    }
     checks.push({
       id: "deliverables",
-      status: missing.length === 0 ? "PASS" : "FAIL",
-      detail: missing.length === 0
+      status: badDeliverables.length === 0 ? "PASS" : "FAIL",
+      detail: badDeliverables.length === 0
         ? `${contract.deliverables.length}/${contract.deliverables.length} deliverable(s) present on disk`
-        : `missing deliverable(s): ${missing.join(", ")}`,
+        : `missing or invalid deliverable(s): ${badDeliverables.join(", ")}`,
     });
   }
 
   // Slice 2: Brownfield diff-scope & test-count floor
   const baselinePath = path.join(root, "one-shot-work", "baseline.json");
   let baseline = null;
+  let baselineError = null;
   if (fs.existsSync(baselinePath)) {
-    try { baseline = JSON.parse(fs.readFileSync(baselinePath, "utf-8")); } catch { baseline = null; }
+    try {
+      baseline = JSON.parse(fs.readFileSync(baselinePath, "utf-8"));
+    } catch (err) {
+      baselineError = `invalid JSON in baseline.json: ${err.message}`;
+    }
   }
+  const normRel = (p) => path.posix.normalize(String(p).replace(/\\/g, "/")).replace(/^\.\//, "");
 
   if (Array.isArray(contract?.allowedFiles) || Array.isArray(contract?.protectedFiles)) {
-    if (!baseline || !baseline.files) {
+    if (baselineError) {
+      checks.push({ id: "diff-scope", status: "FAIL", detail: baselineError });
+    } else if (!baseline || !baseline.files) {
       checks.push({
         id: "diff-scope",
         status: "FAIL",
@@ -678,9 +851,9 @@ export async function runVerify(rawOpts) {
       });
     } else {
       const allowed = Array.isArray(contract.allowedFiles)
-        ? new Set(contract.allowedFiles.map((p) => p.replace(/\\/g, "/")))
+        ? new Set(contract.allowedFiles.map(normRel))
         : null;
-      const protectedSet = new Set((contract.protectedFiles || []).map((p) => p.replace(/\\/g, "/")));
+      const protectedSet = new Set((contract.protectedFiles || []).map(normRel));
       const currentMap = new Map(allFiles.map((f) => [path.relative(root, f).replace(/\\/g, "/"), sha256File(f)]));
       const violations = [];
       for (const [rel, origSha] of Object.entries(baseline.files)) {
@@ -689,11 +862,10 @@ export async function runVerify(rawOpts) {
         if (changed && protectedSet.has(rel)) violations.push(`protected file modified: ${rel}`);
         else if (changed && allowed && !allowed.has(rel)) violations.push(`unwhitelisted edit: ${rel}`);
       }
-      if (allowed) {
-        for (const rel of currentMap.keys()) {
-          if (!(rel in baseline.files) && !allowed.has(rel)) {
-            violations.push(`unwhitelisted new file: ${rel}`);
-          }
+      for (const rel of currentMap.keys()) {
+        if (!(rel in baseline.files)) {
+          if (protectedSet.has(rel)) violations.push(`protected file created: ${rel}`);
+          else if (allowed && !allowed.has(rel)) violations.push(`unwhitelisted new file: ${rel}`);
         }
       }
       checks.push({
@@ -707,23 +879,38 @@ export async function runVerify(rawOpts) {
   }
 
   if (typeof contract?.minTestCount === "number" || typeof contract?.minTestDelta === "number") {
-    const required = Math.max(
-      typeof contract.minTestCount === "number" ? contract.minTestCount : 0,
-      (typeof baseline?.testCount === "number" ? baseline.testCount : 0) +
-        (typeof contract.minTestDelta === "number" ? contract.minTestDelta : 0)
-    );
-    const actual = countTestDefinitions(root, allFiles);
-    checks.push({
-      id: "test-count-floor",
-      status: actual >= required ? "PASS" : "FAIL",
-      detail: `${actual} non-commented test definition(s) found (required >= ${required})`,
-    });
+    if (typeof contract.minTestDelta === "number" && (baselineError || typeof baseline?.testCount !== "number")) {
+      checks.push({
+        id: "test-count-floor",
+        status: "FAIL",
+        detail: baselineError || "minTestDelta configured but one-shot-work/baseline.json (testCount) is missing",
+      });
+    } else {
+      const required = Math.max(
+        typeof contract.minTestCount === "number" ? contract.minTestCount : 0,
+        (typeof baseline?.testCount === "number" ? baseline.testCount : 0) +
+          (typeof contract.minTestDelta === "number" ? contract.minTestDelta : 0)
+      );
+      const actual = countTestDefinitions(root, allFiles);
+      checks.push({
+        id: "test-count-floor",
+        status: actual >= required ? "PASS" : "FAIL",
+        detail: `${actual} non-commented test definition(s) found (required >= ${required})`,
+      });
+    }
   }
 
   // 2. Contract acceptance criteria commands
   if (Array.isArray(contract?.criteria)) {
     for (const item of contract.criteria) {
-      if (!item || !item.check) continue;
+      if (!item || typeof item !== "object" || typeof item.check !== "string" || !item.check.trim()) {
+        checks.push({
+          id: `criterion-${item?.id || "unnamed"}`,
+          status: "FAIL",
+          detail: `${item?.criterion || "criterion"} is missing a non-empty 'check' command`,
+        });
+        continue;
+      }
       const r = runShell(item.check, root);
       checks.push({
         id: `criterion-${item.id || "unnamed"}`,
@@ -768,21 +955,23 @@ export async function runVerify(rawOpts) {
     await probeServer(opts, checks, pw);
   }
 
-  // 5. Static security & hygiene checks (.env, secrets, visible HTML placeholders)
-  const envPath = path.join(root, ".env");
+  // 5. Static security & hygiene checks (.env at root or nested, secrets, visible HTML placeholders)
   const gitignorePath = path.join(root, ".gitignore");
   const gitignoreText = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf-8") : "";
-  if (fs.existsSync(envPath) && !gitignoreIgnoresEnv(gitignoreText)) {
+  const envFiles = allFiles.filter((f) => path.basename(f) === ".env");
+  const envIgnored = gitignoreIgnoresEnv(gitignoreText);
+  if (envFiles.length > 0 && !envIgnored) {
+    const rels = envFiles.map((f) => path.relative(root, f).replace(/\\/g, "/"));
     checks.push({
       id: "env-gitignore",
       status: "FAIL",
-      detail: ".env exists at project root but .gitignore does not ignore .env",
+      detail: `${rels.slice(0, 3).join(", ")} exists but .gitignore does not ignore .env`,
     });
   } else {
     checks.push({
       id: "env-gitignore",
       status: "PASS",
-      detail: fs.existsSync(envPath) ? ".env is ignored by .gitignore" : "no unignored .env at project root",
+      detail: envFiles.length > 0 ? ".env is ignored by .gitignore" : "no unignored .env in project",
     });
   }
 
@@ -792,6 +981,7 @@ export async function runVerify(rawOpts) {
     const ext = path.extname(file).toLowerCase();
     const rel = path.relative(root, file).replace(/\\/g, "/");
     if (CODE_AND_CONFIG_EXTS.has(ext)) {
+      if (fs.statSync(file).size > MAX_SCAN_FILE_BYTES) continue;
       const raw = fs.readFileSync(file, "utf-8");
       const stripped = stripComments(raw, ext);
       const m = SECRET_RE.exec(stripped);
@@ -843,7 +1033,7 @@ export async function runVerify(rawOpts) {
     }
   }
 
-  const { treeHash, fileCount } = computeTreeHash(root);
+  const { treeHash, fileCount } = computeTreeHash(root, { contractPath });
   const summary = {
     pass: checks.filter((c) => c.status === "PASS").length,
     fail: checks.filter((c) => c.status === "FAIL").length,
@@ -884,7 +1074,7 @@ async function main() {
   }
   if (opts.checkReceipt) {
     const root = path.resolve(opts.dir || ".");
-    const r = checkReceipt(root, opts.out);
+    const r = checkReceipt(root, opts.out, { contractPath: opts.contract });
     if (r.ok) {
       console.log(`RECEIPT: ${r.code} — ${r.detail}`);
       process.exit(0);
@@ -905,10 +1095,14 @@ async function main() {
   }
 }
 
-const isMain = Boolean(
-  process.argv[1] &&
-  fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url))
-);
-if (isMain) {
+function isMainModule(metaUrl) {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(metaUrl));
+  } catch {
+    return false;
+  }
+}
+if (isMainModule(import.meta.url)) {
   main();
 }

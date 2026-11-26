@@ -438,3 +438,238 @@ test("Slice 4: auditDomElements flags low WCAG contrast, dead controls, and brok
   });
   assert.ok(goodChecks.every((c) => c.status === "PASS"), JSON.stringify(goodChecks));
 });
+
+test("V1: checkReceipt rejects forged PASS with failing/empty checks and baseline.json tampering invalidates treeHash", async () => {
+  const mod = await import("./verify.mjs");
+  const dir = makeTmpProject({
+    "app.js": "console.log(1);\n",
+    "one-shot-work/baseline.json": JSON.stringify({ files: { "app.js": "abc" }, testCount: 5 }),
+    "one-shot-work/contract.json": JSON.stringify({ deliverables: ["app.js"], criteria: [] }),
+  });
+  try {
+    const { treeHash } = mod.computeTreeHash(dir);
+    const receiptPath = path.join(dir, "one-shot-work", "GATE-RECEIPT.json");
+
+    // Forged receipt with FAIL check inside checks[]
+    fs.writeFileSync(receiptPath, JSON.stringify({
+      status: "PASS",
+      treeHash,
+      summary: { pass: 1, fail: 1, skipped: 0 },
+      checks: [{ id: "deliverables", status: "FAIL", detail: "missing" }],
+    }));
+    const badFail = mod.checkReceipt(dir);
+    assert.equal(badFail.ok, false, "forged receipt containing FAIL check must be rejected");
+
+    // Forged receipt with empty checks[]
+    fs.writeFileSync(receiptPath, JSON.stringify({
+      status: "PASS",
+      treeHash,
+      summary: { pass: 0, fail: 0, skipped: 0 },
+      checks: [],
+    }));
+    const badEmpty = mod.checkReceipt(dir);
+    assert.equal(badEmpty.ok, false, "forged receipt with empty checks must be rejected");
+
+    // Real PASS run succeeds, then tampering baseline.json must invalidate treeHash
+    const pass = runCli(["--dir", dir, "--skip-browser"]);
+    assert.equal(pass.status, 0, pass.stdout + pass.stderr);
+    assert.equal(mod.checkReceipt(dir).ok, true);
+
+    fs.writeFileSync(path.join(dir, "one-shot-work", "baseline.json"), JSON.stringify({ files: {}, testCount: 0 }));
+    const afterTamper = mod.checkReceipt(dir);
+    assert.equal(afterTamper.ok, false, "tampering baseline.json must invalidate treeHash");
+    assert.equal(afterTamper.code, "STALE_OR_FORGED_RECEIPT");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("V2: secrets-scan catches sk-proj-/sk-ant- keys and Python # inside strings, while real # comments pass", () => {
+  const modernKeyDir = makeTmpProject({
+    "app.js": 'const k1 = "sk-proj-abc123def456ghi789jkl012mno345";\nconst k2 = "sk-ant-api03-abc123def456ghi789jkl012";\n',
+  });
+  const pyHashStringDir = makeTmpProject({
+    "app.py": 'COLOR = "#ffffff"; KEY = "AKIAIOSFODNN7EXAMPLE"\n',
+  });
+  const pyRealCommentDir = makeTmpProject({
+    "app.py": 'COLOR = "#ffffff"  # example only: AKIAIOSFODNN7EXAMPLE\n',
+  });
+  try {
+    const r1 = runCli(["--dir", modernKeyDir, "--skip-browser"]);
+    assert.equal(r1.status, 1, r1.stdout + r1.stderr);
+    assert.match(r1.stdout, /FAIL\s+secrets-scan/);
+
+    const r2 = runCli(["--dir", pyHashStringDir, "--skip-browser"]);
+    assert.equal(r2.status, 1, r2.stdout + r2.stderr);
+    assert.match(r2.stdout, /FAIL\s+secrets-scan/);
+
+    const r3 = runCli(["--dir", pyRealCommentDir, "--skip-browser"]);
+    assert.equal(r3.status, 0, r3.stdout + r3.stderr);
+    assert.match(r3.stdout, /PASS\s+secrets-scan/);
+  } finally {
+    fs.rmSync(modernKeyDir, { recursive: true, force: true });
+    fs.rmSync(pyHashStringDir, { recursive: true, force: true });
+    fs.rmSync(pyRealCommentDir, { recursive: true, force: true });
+  }
+});
+
+test("V4: server-fuzz catches headerless reflected XSS and server-idor fails when User A control returns 404 or User B DELETE succeeds", () => {
+  const headerlessXssAndIdor = `
+    import http from "node:http";
+    const items = new Map();
+    let seq = 1;
+    const s = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        if (req.url === "/health") { res.writeHead(200); res.end("ok"); return; }
+        if (req.url === "/api/search" && req.method === "POST") {
+          res.writeHead(200); // no Content-Type header
+          res.end("<p>" + body + "</p>");
+          return;
+        }
+        if (req.url === "/api/items" && req.method === "POST") {
+          const id = String(seq++);
+          items.set(id, { id, owner: req.headers["x-user"] });
+          res.writeHead(201, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ id }));
+          return;
+        }
+        if (req.url.startsWith("/api/items/") && req.method === "GET") {
+          const id = req.url.split("/").pop();
+          const item = items.get(id);
+          if (!item) { res.writeHead(404); res.end("not found"); return; }
+          if (item.owner !== req.headers["x-user"]) { res.writeHead(403); res.end("forbidden"); return; }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(item));
+          return;
+        }
+        if (req.url.startsWith("/api/items/") && req.method === "DELETE") {
+          // Vulnerable: allows User B to delete User A's item!
+          res.writeHead(200); res.end("deleted"); return;
+        }
+        res.writeHead(404); res.end("not found");
+      });
+    });
+    s.listen(Number(process.env.PORT), "127.0.0.1");
+  `;
+  const dir1 = makeTmpProject({
+    "server.mjs": headerlessXssAndIdor,
+    "one-shot-work/contract.json": JSON.stringify({
+      startCmd: `${JSON.stringify(process.execPath)} server.mjs`,
+      healthPath: "/health",
+      fuzzPaths: ["/api/search"],
+      idorProbe: {
+        createPath: "/api/items",
+        resourcePathTemplate: "/api/items/{id}",
+        userAHeaders: { "x-user": "alice" },
+        userBHeaders: { "x-user": "bob" },
+      },
+    }),
+  });
+  const dir2 = makeTmpProject({
+    "server.mjs": headerlessXssAndIdor,
+    "one-shot-work/contract.json": JSON.stringify({
+      startCmd: `${JSON.stringify(process.execPath)} server.mjs`,
+      healthPath: "/health",
+      idorProbe: {
+        createPath: "/api/items",
+        resourcePathTemplate: "/api/wrong-route/{id}",
+        userAHeaders: { "x-user": "alice" },
+        userBHeaders: { "x-user": "bob" },
+      },
+    }),
+  });
+  try {
+    const r1 = runCli(["--dir", dir1, "--skip-browser"]);
+    assert.equal(r1.status, 1, r1.stdout + r1.stderr);
+    assert.match(r1.stdout, /FAIL\s+server-fuzz/);
+    assert.match(r1.stdout, /FAIL\s+server-idor/);
+
+    const r2 = runCli(["--dir", dir2, "--skip-browser"]);
+    assert.equal(r2.status, 1, r2.stdout + r2.stderr);
+    assert.match(r2.stdout, /FAIL\s+server-idor/);
+  } finally {
+    fs.rmSync(dir1, { recursive: true, force: true });
+    fs.rmSync(dir2, { recursive: true, force: true });
+  }
+});
+
+test("V5: countTestDefinitions excludes skip/todo/strings and minTestDelta fails without baseline.json", async () => {
+  const mod = await import("./verify.mjs");
+  const dir = makeTmpProject({
+    "tests/app.test.js": [
+      'test.skip("skipped", () => {});',
+      'it.todo("todo");',
+      'const fake = "test(\\"in-str\\", () => {}); it(\\"in-str2\\", () => {});";',
+      'test("real1", () => {});',
+    ].join("\n") + "\n",
+    "one-shot-work/contract.json": JSON.stringify({ minTestDelta: 1 }),
+  });
+  try {
+    assert.equal(mod.countTestDefinitions(dir), 1, "only active non-string test must be counted");
+    const r = runCli(["--dir", dir, "--skip-browser"]);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /FAIL\s+test-count-floor/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("V6 & V16: deliverables rejects traversal/directories, diff-scope normalizes ./, and malformed criteria fail loudly", async () => {
+  const { createHash } = await import("node:crypto");
+  const sha = (s) => createHash("sha256").update(s).digest("hex");
+  const badDeliv = makeTmpProject({
+    "one-shot-work/contract.json": JSON.stringify({
+      deliverables: [".", "../"],
+      criteria: [{ id: "c1", criterion: "typo", cmd: "echo oops" }],
+    }),
+  });
+  const normScope = makeTmpProject({
+    "server.js": "export const x = 2;\n",
+    "one-shot-work/baseline.json": JSON.stringify({ files: { "server.js": sha("export const x = 1;\n") }, testCount: 0 }),
+    "one-shot-work/contract.json": JSON.stringify({ allowedFiles: ["./server.js"] }),
+  });
+  try {
+    const r1 = runCli(["--dir", badDeliv, "--skip-browser"]);
+    assert.equal(r1.status, 1, r1.stdout + r1.stderr);
+    assert.match(r1.stdout, /FAIL\s+deliverables/);
+    assert.match(r1.stdout, /FAIL\s+criterion-c1/);
+
+    const r2 = runCli(["--dir", normScope, "--skip-browser"]);
+    assert.equal(r2.status, 0, r2.stdout + r2.stderr);
+    assert.match(r2.stdout, /PASS\s+diff-scope/);
+  } finally {
+    fs.rmSync(badDeliv, { recursive: true, force: true });
+    fs.rmSync(normScope, { recursive: true, force: true });
+  }
+});
+
+test("V7: contrastRatio alpha-composites rgba() and auditDomElements flags unloaded images", async () => {
+  const mod = await import("./verify.mjs");
+  const ratio = mod.contrastRatio("rgba(0, 0, 0, 0.1)", "rgb(255, 255, 255)");
+  assert.ok(ratio !== null && ratio < 2.0, `expected translucent text ratio < 2.0, got ${ratio}`);
+  const checks = mod.auditDomElements({
+    textNodes: [{ selector: "p.ghost", fg: "rgba(0, 0, 0, 0.1)", bg: "rgb(255, 255, 255)", fontSizePx: 16, fontWeight: 400 }],
+    images: [{ src: "slow.png", alt: "ok", complete: false, naturalWidth: 0 }],
+  });
+  assert.ok(checks.some((c) => c.id === "browser-contrast" && c.status === "FAIL"));
+  assert.ok(checks.some((c) => c.id === "browser-assets" && c.status === "FAIL"));
+});
+
+test("V8: env-gitignore accepts **/.env and catches nested unignored backend/.env", () => {
+  const okGlob = makeTmpProject({ ".gitignore": "**/.env\n", ".env": "S=1\n" });
+  const badNested = makeTmpProject({ ".gitignore": "", "backend/.env": "S=1\n" });
+  try {
+    const r1 = runCli(["--dir", okGlob, "--skip-browser"]);
+    assert.equal(r1.status, 0, r1.stdout + r1.stderr);
+    assert.match(r1.stdout, /PASS\s+env-gitignore/);
+
+    const r2 = runCli(["--dir", badNested, "--skip-browser"]);
+    assert.equal(r2.status, 1, r2.stdout + r2.stderr);
+    assert.match(r2.stdout, /FAIL\s+env-gitignore/);
+  } finally {
+    fs.rmSync(okGlob, { recursive: true, force: true });
+    fs.rmSync(badNested, { recursive: true, force: true });
+  }
+});

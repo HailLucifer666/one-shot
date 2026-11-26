@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calibration rig for benchmark/checks.py (HANDOFF P0 4.2). Standard library only.
+r"""Calibration rig for benchmark/checks.py (HANDOFF P0 4.2). Standard library only.
 
   python -I benchmark/test_checks.py
 

@@ -402,7 +402,7 @@ def main(argv=None):
     # Never crash the audit on printing a finding.
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(errors="replace")
+            stream.reconfigure(encoding="utf-8", errors="replace")
         except AttributeError:
             pass
     parser = argparse.ArgumentParser(
